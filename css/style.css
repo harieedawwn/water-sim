@@ -173,11 +173,15 @@ button { font: inherit; color: inherit; }
   margin: 0;
   padding: var(--s2) var(--s3);
   text-align: right;
-  font-size: var(--fs-xs);
+  font-size: clamp(10px, 0.5vw + 5px, 12px);
   font-weight: 600;
   line-height: 1.35;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
+  text-wrap: balance;
   pointer-events: none;
+}
+@media (min-width: 1100px) {
+  .footer { white-space: nowrap; }   /* one line on laptops and projectors */
 }
 
 /* ---------- Buttons ---------- */
@@ -260,8 +264,8 @@ button { font: inherit; color: inherit; }
 /* Running: neutral. Stopped: the Run button is highlighted so the state is obvious. */
 .toolbar .btn--run[aria-pressed="false"] { border-color: var(--c-warn); }
 
-/* Compact widths: icons only (the labels stay as aria-labels). */
-@media (max-width: 1099px) {
+/* Narrower than a wide laptop: icons only (the labels stay as aria-labels), so the footer gets the room. */
+@media (max-width: 1399px) {
   .toolbar .btn__text { display: none; }
   .toolbar .btn { padding: 0; width: var(--control-h); }
 }
