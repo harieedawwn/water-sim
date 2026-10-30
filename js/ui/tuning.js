@@ -28,7 +28,7 @@ const round = (v) => Math.round(v * 10000) / 10000;
 
 export function createTuningPanel(container, blender) {
   const S = STR.tuning;
-  const panel = el('div', 'tuning glass');
+  const panel = el('div', 'tuning plate');
   panel.hidden = true;
   panel.append(el('h2', 'panel__title', S.title));
   const syncers = [];

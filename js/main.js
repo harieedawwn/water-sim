@@ -5,7 +5,7 @@ import { showError, installShaderErrorHook } from './ui/errors.js';
 import { loadSettings, saveSettings, sanitize, WAVE_SPEED, WORLD_SIZE, LIMITS, VIEWS } from './config.js';
 import { WaterSim } from './water/sim.js';
 import { WaterSurface } from './water/surface.js';
-import { MAPS, MapBlender } from './maps.js';
+import { MapBlender } from './maps.js';
 import { SourceManager } from './sources.js';
 import { Balls } from './balls.js';
 import { Framing, CAMERA_FOV } from './framing.js';
@@ -16,7 +16,8 @@ import { installPointer } from './pointer.js';
 import { QualityController } from './quality.js';
 import { createToolbar } from './ui/toolbar.js';
 import { createSettingsPanel } from './ui/ui.js';
-import { createHud, nodalLines } from './ui/hud.js';
+import { createHud } from './ui/hud.js';
+import { createChrome } from './ui/chrome.js';
 import { createTuningPanel } from './ui/tuning.js';
 import { installKeys } from './ui/keys.js';
 
@@ -140,14 +141,10 @@ function start() {
   }
 
   // HUD readout and quality info.
-  const readout = { f: 0, lambda: 0, d: null, nodal: null };
+  const readout = { count: 0, freqs: sources.freqs };
   const qualityInfo = { level: 'medium', nx: 0, nz: 0, pixelRatio: 1 };
   function refreshInfo() {
-    readout.f = sources.freqs[0];
-    readout.lambda = WAVE_SPEED / readout.f;
-    readout.d = sources.count >= 2 ? sources.distance12 : null;
-    readout.nodal = sources.count === 2 && settings.phases[0] === settings.phases[1] && sources.freqs[0] === sources.freqs[1]
-      ? nodalLines(readout.d, readout.lambda) : null;
+    readout.count = sources.count;
     hud.setReadout(readout);
     if (quality && panel) {
       qualityInfo.level = quality.current.level;
@@ -217,7 +214,7 @@ function start() {
   }
 
   const hint = document.createElement('div');
-  hint.className = 'present-hint glass';
+  hint.className = 'present-hint plate';
   hint.textContent = STR.toolbar.presentHint;
   uiRoot.append(hint);
   let hintTimer = 0;
@@ -252,7 +249,8 @@ function start() {
     refreshInfo();
   };
 
-  toolbar = createToolbar(uiRoot, settings, {
+  const bottomSlot = createChrome(uiRoot);
+  toolbar = createToolbar(bottomSlot, settings, {
     setCount,
     toggleRunning,
     clearWaves,
@@ -260,7 +258,7 @@ function start() {
     togglePresentation: () => setPresenting(!ui.presenting),
     toggleFullscreen,
   });
-  panel = createSettingsPanel(uiRoot, settings, MAPS, {
+  panel = createSettingsPanel(uiRoot, settings, {
     onChange,
     setView,
     resetPositions,

@@ -1,5 +1,6 @@
-// HUD (top left): live readout card and FPS counter. DOM is written only when values change.
+// HUD (right side): frequency / wavelength readout and the FPS counter. DOM is written only when values change.
 import { STR, fmt } from './strings.js';
+import { WAVE_SPEED, MAX_SOURCES, BALL_HEX } from '../config.js';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -8,28 +9,36 @@ function el(tag, cls, text) {
   return e;
 }
 
-// Nodal-line count for two in-phase sources: 2 * (floor(d / lambda - 0.5) + 1) if d > lambda / 2.
-export function nodalLines(d, lambda) {
-  return d > lambda / 2 ? 2 * (Math.floor(d / lambda - 0.5) + 1) : 0;
-}
-
 export function createHud(container) {
   const R = STR.readout;
   const U = STR.units;
   const hud = el('div', 'hud');
 
-  const card = el('div', 'hud__card glass');
-  const kv = el('dl', 'kv');
-  const cells = {};
-  for (const [k, label] of [['f', R.f], ['lambda', R.lambda], ['d', R.d], ['ratio', R.ratio], ['nodal', R.nodal]]) {
-    const dt = el('dt', null, label);
-    const dd = el('dd');
-    kv.append(dt, dd);
-    cells[k] = { dt, dd };
-  }
-  card.append(kv);
+  const card = el('div', 'hud__card plate');
+  card.setAttribute('aria-live', 'polite');
+  // One shared pair (f, lambda) or, when the frequencies differ, one line per source.
+  const shared = el('dl', 'kv');
+  const fDt = el('dt', null, R.f);
+  const fDd = el('dd');
+  const lDt = el('dt', null, R.lambda);
+  const lDd = el('dd');
+  shared.append(fDt, fDd, lDt, lDd);
 
-  const fpsCard = el('div', 'hud__card hud__fps glass');
+  const list = el('ul', 'srclist');
+  const lines = [];
+  for (let i = 0; i < MAX_SOURCES; i++) {
+    const li = el('li', 'srclist__row');
+    const dot = el('span', 'dot');
+    dot.style.background = BALL_HEX;
+    const name = el('b', null, STR.sourceName(i));
+    const text = el('span', 'srclist__text');
+    li.append(dot, name, text);
+    list.append(li);
+    lines.push({ li, text });
+  }
+  card.append(shared, list);
+
+  const fpsCard = el('div', 'hud__card hud__fps plate');
   fpsCard.hidden = true;
   const fpsValue = el('b');
   const fpsLevel = el('span');
@@ -45,23 +54,27 @@ export function createHud(container) {
   return {
     element: hud,
 
-    // r: { f, lambda, d|null, nodal|null }
+    // r: { count, freqs } (freqs: Hz per source, at least count entries)
     setReadout(r) {
-      const key = `${r.f}|${r.d}|${r.nodal}`;
+      let key = String(r.count);
+      for (let i = 0; i < r.count; i++) key += `|${r.freqs[i]}`;
       if (key === lastKey) return;
       lastKey = key;
-      cells.f.dd.textContent = `${fmt(r.f, 2)} ${U.hz}`;
-      cells.lambda.dd.textContent = `${fmt(r.lambda, 3)} ${U.len}`;
-      const hasD = r.d != null;
-      cells.d.dt.hidden = cells.d.dd.hidden = !hasD;
-      cells.ratio.dt.hidden = cells.ratio.dd.hidden = !hasD;
-      if (hasD) {
-        cells.d.dd.textContent = `${fmt(r.d, 2)} ${U.len}`;
-        cells.ratio.dd.textContent = fmt(r.d / r.lambda, 2);
+      let same = true;
+      for (let i = 1; i < r.count; i++) if (r.freqs[i] !== r.freqs[0]) same = false;
+      shared.hidden = !same;
+      list.hidden = same;
+      if (same) {
+        fDd.textContent = `${fmt(r.freqs[0], 2)} ${U.hz}`;
+        lDd.textContent = `${fmt(WAVE_SPEED / r.freqs[0], 3)} ${U.len}`;
+        return;
       }
-      const hasN = r.nodal != null;
-      cells.nodal.dt.hidden = cells.nodal.dd.hidden = !hasN;
-      if (hasN) cells.nodal.dd.textContent = String(r.nodal);
+      for (let i = 0; i < MAX_SOURCES; i++) {
+        lines[i].li.hidden = i >= r.count;
+        if (i < r.count) {
+          lines[i].text.textContent = `${fmt(r.freqs[i], 2)} ${U.hz} · λ ${fmt(WAVE_SPEED / r.freqs[i], 3)} ${U.len}`;
+        }
+      }
     },
 
     setFpsVisible(v) { fpsCard.hidden = !v; },

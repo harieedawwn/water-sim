@@ -19,7 +19,7 @@ js/framing.js (camera framing, sim domain, 2D mapping, area allowed for sources)
 js/water/sim.js (WaterSim) | js/water/shaders.js (GLSL strings) | js/water/surface.js (water mesh/material, env + line uniforms)
 js/maps.js (MAPS[]: lake, sea) | js/sources.js (SourceManager) | js/balls.js (3D balls) | js/labels.js (S1..S4 tags in 3D)
 js/lines.js (interference lines state, shared by 3D and 2D) | js/view2d.js (analytic 2D canvas) | js/pointer.js (drops, source dragging)
-js/ui/strings.js (all Vietnamese text) | js/ui/errors.js | js/ui/ui.js (settings panel) | js/ui/hud.js (fps, readout) | js/ui/keys.js | js/ui/toolbar.js | js/ui/tuning.js | js/quality.js
+js/ui/strings.js (all Vietnamese text) | js/ui/errors.js | js/ui/ui.js (settings panel) | js/ui/chrome.js (title, footer, bottom row) | js/ui/icons.js | js/ui/hud.js (fps, f / lambda readout) | js/ui/keys.js | js/ui/toolbar.js | js/ui/tuning.js | js/quality.js
 
 ## Views (setting `view`)
 - `lake` "Mặt hồ" (default): overcast lake, MAPS[0]. `sea` "Mặt biển": turquoise sea over sand, MAPS[1]. Switching 3D views crossfades the parameters.

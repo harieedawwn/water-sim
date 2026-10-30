@@ -5,7 +5,7 @@ Stages (each = one session, /clear between):
 - [x] P3 Vietnamese settings UI + persistence + adaptive quality + FPS + theory overlay/readout + shortcuts
 - [x] P4 Independent review + fixes
 - [x] P5 Engine + features: full-screen water (screen-sized sim domain), 3 views (Mặt hồ, Mặt biển, 2D), move mode, per-source frequency, fixed ball look, interference maxima/minima lines (3D + 2D), analytic 2D view
-- [ ] P6 Visual UI redesign (toolbar, panel, HUD) using the contract below; no engine changes
+- [x] P6 Visual UI redesign: flat dark UI, title + footer plates, f/lambda readout, grouped settings (side panel / phone bottom sheet), chrome.js + icons.js
 Decisions: three.js core, GPU height-field, no camera/hand tracking, assets vendored, sources 1/2/4.
 P1 notes: c = 0.8 u/s, f 0.8-2.4 Hz (lambda >= 8 cells at 384), dt 1/120, 9-point Laplacian, c_num corrected so lambda = c/f;
 emitter gain normalised so "amplitude" = wave amplitude at r = 1. Temporary debug panel lives in js/ui/ui.js.
@@ -43,4 +43,7 @@ maxima, tipMaxima, minima, tipMinima, linesNeed, quality, qualityNames, tipQuali
 foam, lowNote, showFps, reset, tipReset, keys, tabs, title, close}; STR.toolbar.*; STR.readout.*; STR.units.*.
 phaseOffset was replaced by phases[]: an old saved phaseOffset maps to phases[1] and phases[3]. Panel: segmented S1..SN + slider + chips (ui.js phaseSection).
 Colours fixed by the engine (do not restyle): BALL_HEX, LINE_COLORS (lines.js), 2D palette (view2d.js).
-Next: P6
+P6 notes: no tabs any more (one scrolling panel, collapsed "Nâng cao"); view picker is a segmented control; createSettingsPanel(container, settings, actions) has no maps arg;
+readout shows only f and lambda (one pair, or one line per source when frequencies differ); .glass renamed .plate (flat, no blur). Checked: node --check, one load at 1280x720 and 390x844 (settings open), no console errors.
+Not run: phone landscape, real touch drag, tuning panel / error overlay visual check, projector contrast.
+Next: done

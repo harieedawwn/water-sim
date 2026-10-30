@@ -1,6 +1,9 @@
-// Settings panel: 3 tabs (Thí nghiệm, Cảnh, Hiệu năng). Plain working controls; restyled in P6.
+// Settings panel: one scrolling list of grouped sections (view, sources, lines, phase, more) and a
+// collapsed "Nâng cao" section. Side panel on desktop, bottom sheet on phones (see style.css).
 import { STR, fmt } from './strings.js';
 import { LIMITS, VIEWS, MAX_SOURCES, BALL_HEX } from '../config.js';
+import { LINE_COLORS } from '../lines.js';
+import { ICONS } from './icons.js';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -9,24 +12,11 @@ function el(tag, cls, text) {
   return e;
 }
 
-function toSrgbByte(c) {
-  const v = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-  return Math.round(Math.min(1, Math.max(0, v)) * 255);
+function dot() {
+  const d = el('span', 'dot');
+  d.style.background = BALL_HEX;
+  return d;
 }
-
-function css(a, gain = 1) {
-  return `rgb(${toSrgbByte(a[0] * gain)}, ${toSrgbByte(a[1] * gain)}, ${toSrgbByte(a[2] * gain)})`;
-}
-
-// Thumbnail: sky gradient over a water gradient, from the map's own colours.
-function thumbStyle(m) {
-  const e = m.exposure;
-  return `linear-gradient(180deg, ${css(m.sky.zenith, e)} 0%, ${css(m.sky.horizon, e)} 42%, `
-    + `${css(m.water.scatter, e * 2)} 50%, ${css(m.water.deep, e * 3)} 100%)`;
-}
-
-const THUMB_2D = 'radial-gradient(circle at 50% 60%, transparent 0 18%, rgba(255,255,255,0.7) 19% 21%, '
-  + 'transparent 22% 38%, rgba(255,255,255,0.5) 39% 41%, transparent 42%), #0A0D11';
 
 // Exactly 2 sources with equal frequency: the interference lines can be drawn.
 export function linesAvailable(s) {
@@ -35,13 +25,12 @@ export function linesAvailable(s) {
 }
 
 /*
-  maps:    MAPS (index 0 = lake, 1 = sea) for the view thumbnails
   actions: { onChange(key), setView(id), resetPositions(), resetDefaults(), close() }
 */
-export function createSettingsPanel(container, settings, maps, actions) {
+export function createSettingsPanel(container, settings, actions) {
   const P = STR.panel;
   const U = STR.units;
-  const panel = el('div', 'panel glass');
+  const panel = el('div', 'panel plate');
   panel.hidden = true;
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', P.title);
@@ -49,58 +38,37 @@ export function createSettingsPanel(container, settings, maps, actions) {
 
   const head = el('div', 'panel__head');
   head.append(el('h2', 'panel__title', P.title));
-  const closeBtn = el('button', 'btn btn--icon', '✕');
+  const closeBtn = el('button', 'btn btn--icon btn--quiet');
   closeBtn.type = 'button';
+  closeBtn.innerHTML = ICONS.close;
   closeBtn.setAttribute('aria-label', P.close);
   closeBtn.addEventListener('click', () => actions.close());
   head.append(closeBtn);
-  panel.append(head);
-
-  // Tabs
-  const tabBar = el('div', 'tabs');
-  tabBar.setAttribute('role', 'tablist');
-  const tabs = [];
-  let active = 0;
-  P.tabs.forEach((name, i) => {
-    const b = el('button', 'tabs__btn', name);
-    b.type = 'button';
-    b.setAttribute('role', 'tab');
-    b.addEventListener('click', () => select(i));
-    b.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
-        e.preventDefault();
-        const n = (i + (e.key === 'ArrowRight' ? 1 : P.tabs.length - 1)) % P.tabs.length;
-        select(n);
-        tabs[n].btn.focus();
-      }
-    });
-    const body = el('div', 'tab');
-    body.setAttribute('role', 'tabpanel');
-    tabBar.append(b);
-    tabs.push({ btn: b, body });
-  });
-  panel.append(tabBar);
-  for (const t of tabs) panel.append(t.body);
-
-  function select(i) {
-    active = i;
-    tabs.forEach((t, k) => {
-      t.btn.setAttribute('aria-selected', String(k === i));
-      t.btn.tabIndex = k === i ? 0 : -1;
-      t.body.hidden = k !== i;
-    });
-  }
+  const body = el('div', 'panel__body');
+  panel.append(head, body);
 
   // ---- control builders ----
-  // get / set default to settings[key]; isHidden() hides the whole row.
+  function section(title) {
+    const sec = el('section', 'sec');
+    sec.append(el('h3', 'sec__title', title));
+    body.append(sec);
+    return sec;
+  }
+
+  const note = (parent, text, cls = 'note') => parent.appendChild(el('p', cls, text));
+
+  // get / set default to settings[key]; isHidden() hides the whole row; source adds the green dot.
   function slider(parent, key, label, tip, lim, format, opts = {}) {
     const get = opts.get || (() => settings[key]);
     const set = opts.set || ((v) => { settings[key] = v; });
     const row = el('div', 'row');
-    const lab = el('label', 'row__label tip-left', label);
-    lab.dataset.tip = tip;
-    const value = el('span', 'row__value');
-    lab.append(value);
+    const lab = el('label', 'row__label tip-side');
+    if (tip) lab.dataset.tip = tip;
+    const name = el('span', 'row__name');
+    if (opts.source) name.append(dot());
+    name.append(label);
+    const value = el('output', 'row__value');
+    lab.append(name, value);
     const input = el('input', 'range');
     input.type = 'range';
     input.min = String(lim.min);
@@ -121,10 +89,13 @@ export function createSettingsPanel(container, settings, maps, actions) {
     });
   }
 
-  function segmented(parent, key, label, tip, options) {
+  // Segmented control; onPick overrides the default settings[key] = value.
+  function segmented(parent, key, label, tip, options, onPick, hideLabel = false) {
     const row = el('div', 'row');
-    const lab = el('div', 'row__label tip-left', label);
-    lab.dataset.tip = tip;
+    const lab = el('div', 'row__label tip-side');
+    lab.append(el('span', 'row__name', label));
+    if (tip) lab.dataset.tip = tip;
+    lab.hidden = hideLabel;
     const seg = el('div', 'seg');
     seg.setAttribute('role', 'group');
     seg.setAttribute('aria-label', label);
@@ -132,6 +103,7 @@ export function createSettingsPanel(container, settings, maps, actions) {
       const b = el('button', 'seg__btn', text);
       b.type = 'button';
       b.addEventListener('click', () => {
+        if (onPick) { onPick(val); return; }
         settings[key] = val;
         actions.onChange(key);
       });
@@ -145,15 +117,17 @@ export function createSettingsPanel(container, settings, maps, actions) {
     });
   }
 
-  function toggle(parent, key, label, tip, isDisabled) {
+  // opts: { disabled(), hidden() }
+  function toggle(parent, key, label, tip, opts = {}) {
     const lab = el('label', 'switch');
     if (tip) {
       lab.dataset.tip = tip;
-      lab.classList.add('tip-left');
+      lab.classList.add('tip-side');
     }
     const text = el('span', null, label);
     const input = el('input');
     input.type = 'checkbox';
+    input.setAttribute('role', 'switch');
     input.addEventListener('change', () => {
       settings[key] = input.checked;
       actions.onChange(key);
@@ -162,44 +136,128 @@ export function createSettingsPanel(container, settings, maps, actions) {
     parent.append(lab);
     syncers.push(() => {
       input.checked = !!settings[key];
-      if (isDisabled) input.disabled = isDisabled();
+      if (opts.disabled) input.disabled = opts.disabled();
+      if (opts.hidden) lab.hidden = opts.hidden();
     });
+    return lab;
   }
 
-  function button(parent, label, tip, onClick) {
-    const b = el('button', 'btn btn--block tip-left', label);
+  function button(parent, icon, label, tip, onClick, cls = '') {
+    const b = el('button', `btn btn--block ${cls}`);
     b.type = 'button';
-    b.dataset.tip = tip;
+    b.innerHTML = `${icon}<span>${label}</span>`;
+    if (tip) {
+      b.dataset.tip = tip;
+      b.classList.add('tip-side');
+    }
     b.addEventListener('click', onClick);
     parent.append(b);
     return b;
   }
 
-  // Initial phase per source: S1..SN selector, slider with readout, quick-value chips, hint.
   const PHASE_CHIPS = [0, 15, 30, 45, 60, 90, 180];
+  const hz = (v) => `${fmt(v, 2)} ${U.hz}`;
+  const deg = (v) => `${Math.round(v)}${U.deg}`;
+
+  // ---- Chế độ xem ----
+  const secView = section(P.secView);
+  segmented(secView, 'view', P.view, P.tipView,
+    VIEWS.map((id) => [id, id === 'lake' ? STR.views.lake : id === 'sea' ? STR.views.sea : STR.views.twoD]),
+    (id) => actions.setView(id), true);
+
+  // ---- Nguồn sóng ----
+  const secSrc = section(P.secSources);
+  toggle(secSrc, 'moveMode', P.moveMode, P.tipMoveMode);
+  note(secSrc, P.moveHint);
+  slider(secSrc, 'frequency', P.frequency, P.tipFrequency, LIMITS.frequency, hz,
+    { isHidden: () => settings.perSourceFreq });
+  toggle(secSrc, 'perSourceFreq', P.perSourceFreq, P.tipPerSourceFreq);
+  for (let i = 0; i < MAX_SOURCES; i++) {
+    slider(secSrc, 'sourceFreqs', STR.sourceName(i), P.tipFreqOf, LIMITS.frequency, hz, {
+      id: `sourceFreq${i}`,
+      source: true,
+      get: () => settings.sourceFreqs[i],
+      set: (v) => { settings.sourceFreqs[i] = v; },
+      isHidden: () => !settings.perSourceFreq || i >= settings.sourceCount,
+    });
+  }
+
+  // ---- Đường giao thoa ----
+  const secLines = section(P.secLines);
+  toggle(secLines, 'showMaxima', P.maxima, P.tipMaxima);
+  toggle(secLines, 'showMinima', P.minima, P.tipMinima);
+  const legend = el('ul', 'legend');
+  const legendItem = (color, dashed, name, lineStyle) => {
+    const li = el('li', 'legend__item');
+    const sw = el('span', 'legend__swatch');
+    sw.style.borderTopColor = color;
+    sw.style.borderTopStyle = dashed ? 'dashed' : 'solid';
+    li.append(sw, el('span', null, `${name} (${lineStyle})`));
+    legend.append(li);
+    return li;
+  };
+  const legendMax = legendItem(LINE_COLORS.max, false, P.maxima, P.legendSolid);
+  const legendMin = legendItem(LINE_COLORS.min, true, P.minima, P.legendDashed);
+  secLines.append(legend);
+  const linesNote = note(secLines, P.linesNeed, 'note note--warn');
+  syncers.push(() => {
+    const ok = linesAvailable(settings);
+    linesNote.hidden = ok;
+    legendMax.hidden = !settings.showMaxima;
+    legendMin.hidden = !settings.showMinima;
+    legend.hidden = !ok || (!settings.showMaxima && !settings.showMinima);
+  });
+
+  // ---- Pha ban đầu ----
+  phaseSection(section(P.secPhase));
+
+  // ---- Tùy chỉnh thêm ----
+  const secMore = section(P.secMore);
+  slider(secMore, 'spacing', P.spacing, P.tipSpacing, LIMITS.spacing, (v) => `${fmt(v, 1)} ${U.len}`);
+  slider(secMore, 'amplitude', P.amplitude, P.tipAmplitude, LIMITS.amplitude, (v) => `${fmt(v, 3)} ${U.len}`);
+  segmented(secMore, 'layout', P.layout, P.tipLayout, [['hang', P.layoutHang], ['vuong', P.layoutVuong]]);
+  slider(secMore, 'cameraPitch', P.pitch, P.tipPitch, LIMITS.cameraPitch, deg,
+    { isHidden: () => settings.view === '2d' });
+  toggle(secMore, 'show2dTroughs', P.troughs2d, null, { hidden: () => settings.view !== '2d' });
+  toggle(secMore, 'show2dGrid', P.grid2d, null, { hidden: () => settings.view !== '2d' });
+  button(secMore, ICONS.target, P.resetPositions, P.tipResetPositions, () => actions.resetPositions());
+
+  // ---- Nâng cao (collapsed) ----
+  const adv = el('details', 'sec sec--adv');
+  adv.append(el('summary', 'sec__title', P.secAdvanced));
+  body.append(adv);
+  const Q = P.qualityNames;
+  segmented(adv, 'quality', P.quality, P.tipQuality, [['auto', Q.auto], ['low', Q.low], ['medium', Q.medium], ['high', Q.high]]);
+  const qNow = note(adv, '');
+  toggle(adv, 'reflection', P.reflection);
+  toggle(adv, 'refraction', P.refraction, null, { disabled: () => qualityState.level === 'low' });
+  toggle(adv, 'foam', P.foam, null, { disabled: () => qualityState.level === 'low' });
+  const lowNote = note(adv, P.lowNote);
+  toggle(adv, 'showFps', P.showFps);
+  button(adv, ICONS.reset, P.reset, P.tipReset, () => actions.resetDefaults(), 'btn--warn');
+  note(adv, P.keys);
+
+  let qualityState = { level: 'medium', nx: 0, nz: 0, pixelRatio: 1 };
+
+  // Initial phase per source: S1..SN selector, slider with readout, quick-value chips, hint.
   function phaseSection(parent) {
     let sel = 0;
-    const box = el('div', 'row phase');
-    const title = el('div', 'row__label tip-left', P.phase);
-    title.dataset.tip = P.tipPhase;
     const seg = el('div', 'seg');
     seg.setAttribute('role', 'group');
-    seg.setAttribute('aria-label', P.phase);
+    seg.setAttribute('aria-label', P.secPhase);
     const segBtns = [];
     for (let i = 0; i < MAX_SOURCES; i++) {
       const b = el('button', 'seg__btn');
       b.type = 'button';
-      const dot = el('span', 'seg__dot');
-      dot.style.background = BALL_HEX;
-      b.append(dot, STR.sourceName(i));
+      b.append(dot(), STR.sourceName(i));
       b.addEventListener('click', () => { sel = i; sync(); });
       seg.append(b);
       segBtns.push(b);
     }
     const sliderRow = el('div', 'row');
     const lab = el('label', 'row__label');
-    const labText = el('span');
-    const value = el('span', 'row__value');
+    const labText = el('span', 'row__name');
+    const value = el('output', 'row__value');
     lab.append(labText, value);
     const input = el('input', 'range');
     input.type = 'range';
@@ -210,20 +268,20 @@ export function createSettingsPanel(container, settings, maps, actions) {
     sliderRow.append(lab, input);
     const chips = el('div', 'chips');
     chips.setAttribute('role', 'group');
-    chips.setAttribute('aria-label', P.phase);
-    const chipBtns = PHASE_CHIPS.map((deg) => {
-      const b = el('button', 'chip', `${deg}${U.deg}`);
+    chips.setAttribute('aria-label', P.secPhase);
+    const chipBtns = PHASE_CHIPS.map((d) => {
+      const b = el('button', 'chip', `${d}${U.deg}`);
       b.type = 'button';
-      b.addEventListener('click', () => setPhase(deg));
+      b.addEventListener('click', () => setPhase(d));
       chips.append(b);
-      return [deg, b];
+      return [d, b];
     });
-    box.append(title, seg, sliderRow, chips, el('p', 'note', P.phaseHint));
-    parent.append(box);
+    parent.append(seg, sliderRow, chips);
+    note(parent, P.phaseHint);
 
-    function setPhase(deg) {
-      settings.phases[sel] = deg;
-      input.value = String(deg);
+    function setPhase(d) {
+      settings.phases[sel] = d;
+      input.value = String(d);
       show();
       actions.onChange('phases');
     }
@@ -231,8 +289,8 @@ export function createSettingsPanel(container, settings, maps, actions) {
 
     function show() {
       const v = settings.phases[sel];
-      value.textContent = `${Math.round(v)}${U.deg}`;
-      for (const [deg, b] of chipBtns) b.setAttribute('aria-pressed', String(deg === v));
+      value.textContent = deg(v);
+      for (const [d, b] of chipBtns) b.setAttribute('aria-pressed', String(d === v));
     }
     function sync() {
       if (sel >= settings.sourceCount) sel = settings.sourceCount - 1;
@@ -246,79 +304,6 @@ export function createSettingsPanel(container, settings, maps, actions) {
     }
     syncers.push(sync);
   }
-
-  const hz = (v) => `${fmt(v, 2)} ${U.hz}`;
-
-  // ---- Tab 1: Thí nghiệm ----
-  const t1 = tabs[0].body;
-  slider(t1, 'frequency', P.frequency, P.tipFrequency, LIMITS.frequency, hz,
-    { isHidden: () => settings.perSourceFreq });
-  toggle(t1, 'perSourceFreq', P.perSourceFreq, P.tipPerSourceFreq);
-  for (let i = 0; i < MAX_SOURCES; i++) {
-    slider(t1, 'sourceFreqs', P.freqOf(i), P.tipFreqOf, LIMITS.frequency, hz, {
-      id: `sourceFreq${i}`,
-      get: () => settings.sourceFreqs[i],
-      set: (v) => { settings.sourceFreqs[i] = v; },
-      isHidden: () => !settings.perSourceFreq || i >= settings.sourceCount,
-    });
-  }
-  slider(t1, 'amplitude', P.amplitude, P.tipAmplitude, LIMITS.amplitude, (v) => `${fmt(v, 3)} ${U.len}`);
-  slider(t1, 'spacing', P.spacing, P.tipSpacing, LIMITS.spacing, (v) => `${fmt(v, 1)} ${U.len}`);
-  phaseSection(t1);
-  segmented(t1, 'layout', P.layout, P.tipLayout, [['hang', P.layoutHang], ['vuong', P.layoutVuong]]);
-  toggle(t1, 'moveMode', P.moveMode, P.tipMoveMode);
-  button(t1, P.resetPositions, P.tipResetPositions, () => actions.resetPositions());
-  toggle(t1, 'showMaxima', P.maxima, P.tipMaxima);
-  toggle(t1, 'showMinima', P.minima, P.tipMinima);
-  const linesNote = el('p', 'note note--warn', P.linesNeed);
-  t1.append(linesNote);
-  syncers.push(() => { linesNote.hidden = linesAvailable(settings); });
-
-  // ---- Tab 2: Cảnh ----
-  const t2 = tabs[1].body;
-  const viewRow = el('div', 'row');
-  const viewLab = el('div', 'row__label tip-left', P.view);
-  viewLab.dataset.tip = P.tipView;
-  const grid = el('div', 'maps');
-  const viewBtns = VIEWS.map((id, i) => {
-    const b = el('button', 'map-btn');
-    b.type = 'button';
-    const th = el('span', 'map-btn__thumb');
-    th.style.background = id === '2d' ? THUMB_2D : thumbStyle(maps[i]);
-    const name = id === 'lake' ? STR.views.lake : id === 'sea' ? STR.views.sea : STR.views.twoD;
-    b.append(th, el('span', 'map-btn__name', name));
-    b.addEventListener('click', () => actions.setView(id));
-    grid.append(b);
-    return [id, b];
-  });
-  viewRow.append(viewLab, grid);
-  t2.append(viewRow);
-  syncers.push(() => { for (const [id, b] of viewBtns) b.setAttribute('aria-pressed', String(settings.view === id)); });
-  slider(t2, 'cameraPitch', P.pitch, P.tipPitch, LIMITS.cameraPitch, (v) => `${Math.round(v)}${U.deg}`);
-  toggle(t2, 'show2dTroughs', P.troughs2d);
-  toggle(t2, 'show2dGrid', P.grid2d);
-
-  // ---- Tab 3: Hiệu năng ----
-  const t3 = tabs[2].body;
-  const Q = P.qualityNames;
-  segmented(t3, 'quality', P.quality, P.tipQuality, [['auto', Q.auto], ['low', Q.low], ['medium', Q.medium], ['high', Q.high]]);
-  const qNow = el('p', 'note');
-  t3.append(qNow);
-  toggle(t3, 'reflection', P.reflection);
-  toggle(t3, 'refraction', P.refraction, null, () => qualityState.level === 'low');
-  toggle(t3, 'foam', P.foam, null, () => qualityState.level === 'low');
-  const lowNote = el('p', 'note', P.lowNote);
-  t3.append(lowNote);
-  toggle(t3, 'showFps', P.showFps);
-  const resetBtn = el('button', 'btn btn--block btn--warn tip-left push-end', P.reset);
-  resetBtn.type = 'button';
-  resetBtn.dataset.tip = P.tipReset;
-  resetBtn.addEventListener('click', () => actions.resetDefaults());
-  t3.append(resetBtn, el('p', 'note', P.keys));
-
-  let qualityState = { level: 'medium', nx: 0, nz: 0, pixelRatio: 1 };
-
-  select(active);
 
   function sync() {
     for (const s of syncers) s();
