@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bể sóng 3D</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    { "imports": { "three": "./vendor/three/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="ui"></div>
+  <div id="errors" class="errors" hidden></div>
+  <!-- Static fallback (the only text outside strings.js): shown when no script can run at all,
+       e.g. index.html opened as file:// or JavaScript disabled, so the page is never blank. -->
+  <div id="boot-fail" class="boot-fail">
+    <p>Không chạy được ứng dụng. Hãy mở trang qua máy chủ web (trong thư mục này chạy
+      <code>py -m http.server 8000</code> rồi mở http://localhost:8000), dùng Chrome hoặc Edge bản mới và bật JavaScript.</p>
+  </div>
+  <script>
+    (function () {
+      var el = document.getElementById('boot-fail');
+      el.hidden = true;
+      var check = function () {
+        if (!window.__rippleStarted && !window.__rippleErrorShown) el.hidden = false;
+      };
+      if (location.protocol === 'file:') check(); else setTimeout(check, 6000);
+    })();
+  </script>
+  <!-- errors.js is its own module graph so it still runs when main.js fails to load -->
+  <script type="module" src="js/ui/errors.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
