@@ -1,35 +1,19 @@
-// Water mesh + material. One mesh: fine grid over the simulated tank, coarse skirt of calm
-// water around it out to the horizon so the tank edges are never visible.
+// Water mesh + material. One unit grid stretched over the simulated domain in the vertex shader;
+// framing.js sizes that domain so it always covers the whole screen (no tank edge, no horizon).
 import * as THREE from 'three';
 import { WATER_VERT, WATER_FRAG, MAX_BALLS } from './shaders.js';
-import { WORLD_HALF } from '../config.js';
 
-const INNER_SEGMENTS = 256;
-const SKIRT_EXTENT = 48;     // world units from origin
-const SKIRT_SEGMENTS = 16;   // per side
-
-function axisCoords() {
-  const c = [];
-  const outer = SKIRT_EXTENT - WORLD_HALF;
-  for (let i = 0; i < SKIRT_SEGMENTS; i++) {
-    const t = i / SKIRT_SEGMENTS;
-    c.push(-SKIRT_EXTENT + outer * (1 - (1 - t) * (1 - t))); // denser towards the tank
-  }
-  for (let i = 0; i <= INNER_SEGMENTS; i++) c.push(-WORLD_HALF + (2 * WORLD_HALF * i) / INNER_SEGMENTS);
-  for (let i = SKIRT_SEGMENTS - 1; i >= 0; i--) c.push(-c[i]);
-  return c;
-}
+const SEGMENTS = 256;
 
 function buildGeometry() {
-  const c = axisCoords();
-  const n = c.length;
+  const n = SEGMENTS + 1;
   const pos = new Float32Array(n * n * 3);
   let p = 0;
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
-      pos[p++] = c[i];
+      pos[p++] = i / SEGMENTS;
       pos[p++] = 0;
-      pos[p++] = c[j];
+      pos[p++] = j / SEGMENTS;
     }
   }
   const idx = new Uint32Array((n - 1) * (n - 1) * 6);
@@ -48,8 +32,13 @@ function buildGeometry() {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setIndex(new THREE.BufferAttribute(idx, 1));
-  g.boundingSphere = new THREE.Sphere(new THREE.Vector3(), SKIRT_EXTENT * Math.SQRT2);
   return g;
+}
+
+// '#RRGGBB' -> display (sRGB) components, used where colours are mixed after tone mapping.
+export function hexToVec3(hex, out) {
+  const v = parseInt(hex.slice(1), 16);
+  return out.set(((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255);
 }
 
 function rgb(color, a) { color.setRGB(a[0], a[1], a[2]); }
@@ -93,16 +82,17 @@ export function applyEnv(u, p) {
 }
 
 export class WaterSurface {
-  constructor() {
+  // sim: WaterSim (its domain / texel vectors are shared, so grid changes need no copying).
+  constructor(sim, lineColors) {
     const balls = [];
     for (let i = 0; i < MAX_BALLS; i++) balls.push(new THREE.Vector4());
     this.uniforms = {
       ...envUniforms(),
       uHeight: { value: null },
-      uHalf: { value: WORLD_HALF },
+      uDomain: { value: sim.domainUniform },
       uDisp: { value: 1 },
-      uTexel: { value: new THREE.Vector2(1 / 512, 1 / 512) },
-      uCell: { value: (2 * WORLD_HALF) / 512 },
+      uTexel: { value: sim.texel },
+      uCell: { value: sim.cellSize },
       uTime: { value: 0 },
       uNormalStrength: { value: 3 },
       uMicro: { value: 0 },
@@ -115,9 +105,16 @@ export class WaterSurface {
       uFoam: { value: 0.5 },
       uBalls: { value: balls },
       uBallCount: { value: 0 },
-      uOverlaySrc: { value: new THREE.Vector4() },
-      uOverlayLambda: { value: 0.4 },
-      uOverlayPhase: { value: 0 },
+      uLineSrc: { value: new THREE.Vector4() },
+      uLineLambda: { value: 0.4 },
+      uLineCycles: { value: 0 },
+      uLineReach: { value: new THREE.Vector2() },
+      uLineFade: { value: 1 },
+      uLineOn: { value: new THREE.Vector2() },
+      uLinePx: { value: 1 },
+      uLineDash: { value: 0.1 },
+      uLineMaxColor: { value: hexToVec3(lineColors.max, new THREE.Vector3()) },
+      uLineMinColor: { value: hexToVec3(lineColors.min, new THREE.Vector3()) },
     };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -128,31 +125,37 @@ export class WaterSurface {
     });
     this.mesh = new THREE.Mesh(buildGeometry(), this.material);
     this.mesh.renderOrder = 1;
-    this._res = 0;
+    this.mesh.frustumCulled = false;
     this._features = '';
   }
 
   // Effect switches compile in or out of the shader (Low quality pays nothing for disabled effects).
-  // The theory overlay is a define too, so it costs nothing when off.
-  setFeatures({ reflection, refraction, foam, overlay }) {
-    const key = `${reflection}|${refraction}|${foam}|${overlay}`;
+  // The interference lines are a define too (on when either line toggle is on), so they cost nothing when off.
+  setFeatures({ reflection, refraction, foam, lines }) {
+    const key = `${reflection}|${refraction}|${foam}|${lines}`;
     if (key === this._features) return;
     this._features = key;
     const d = {};
     if (!reflection) d.CHEAP_SKY = '';
     if (refraction) d.REFRACTION = '';
     if (foam) d.FOAM = '';
-    if (overlay) d.OVERLAY = '';
+    if (lines) d.LINES = '';
     this.material.defines = d;
     this.material.needsUpdate = true;
   }
 
-  // Sources 0 and 1 (world x, z), wavelength and phase offset of source 1 (radians).
-  setOverlay(ax, az, bx, bz, lambda, phase) {
+  // lines: InterferenceLines state; pixelRatio: renderer pixel ratio; pxPerUnit: CSS px per world unit
+  // at the screen centre (keeps the dashes about the same length on screen at any zoom).
+  setLines(lines, pixelRatio, pxPerUnit) {
     const u = this.uniforms;
-    u.uOverlaySrc.value.set(ax, az, bx, bz);
-    u.uOverlayLambda.value = lambda;
-    u.uOverlayPhase.value = phase / (2 * Math.PI);
+    u.uLineSrc.value.set(lines.ax, lines.az, lines.bx, lines.bz);
+    u.uLineLambda.value = lines.lambda;
+    u.uLineCycles.value = lines.cycles;
+    u.uLineReach.value.set(lines.reachA, lines.reachB);
+    u.uLineFade.value = lines.fade;
+    u.uLineOn.value.set(lines.drawMax ? 1 : 0, lines.drawMin ? 1 : 0);
+    u.uLinePx.value = 0.9 * pixelRatio;
+    u.uLineDash.value = 16 / pxPerUnit;
   }
 
   applyMap(p) {
@@ -173,11 +176,7 @@ export class WaterSurface {
     const u = this.uniforms;
     u.uHeight.value = sim.heightTexture;
     u.uTime.value = time;
-    if (sim.res !== this._res) {
-      this._res = sim.res;
-      u.uTexel.value.set(1 / sim.res, 1 / sim.res);
-      u.uCell.value = sim.cellSize;
-    }
+    u.uCell.value = sim.cellSize;
     let n = 0;
     for (let i = 0; i < balls.meshes.length; i++) {
       const m = balls.meshes[i];

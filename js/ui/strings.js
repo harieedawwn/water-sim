@@ -50,42 +50,47 @@ export const STR = {
   panel: {
     title: 'Cài đặt',
     close: 'Đóng bảng cài đặt',
-    tabs: ['Thí nghiệm', 'Cảnh', 'Lý thuyết', 'Hiệu năng'],
+    tabs: ['Thí nghiệm', 'Cảnh', 'Hiệu năng'],
 
     frequency: 'Tần số',
     amplitude: 'Biên độ',
     spacing: 'Khoảng cách nguồn',
-    phaseOffset: 'Lệch pha',
-    ballSize: 'Cỡ bóng',
+    phase: 'Pha ban đầu',
+    phaseOf: (i) => `Pha ban đầu của S${i + 1}`,
+    phaseHint: 'Pha ban đầu quyết định thời điểm nguồn bắt đầu dao động; nguồn cùng pha khi các giá trị bằng nhau.',
     layout: 'Bố cục',
     layoutHang: 'Hàng ngang',
     layoutVuong: 'Hình vuông',
     tipFrequency: 'Số dao động mỗi giây của bóng. Tần số càng cao thì bước sóng càng ngắn (λ = v / f).',
     tipAmplitude: 'Độ cao của sóng ở cách nguồn 1 đơn vị.',
     tipSpacing: 'Khoảng cách d giữa hai nguồn cạnh nhau.',
-    tipPhaseOffset: 'Độ lệch pha giữa các nguồn xen kẽ. 0° là cùng pha.',
-    tipBallSize: 'Bán kính quả bóng. Bóng lớn hơn tạo sóng mạnh hơn.',
+    tipPhase: 'Pha ban đầu φ của nguồn đang chọn, từ 0° đến 360°.',
+    perSourceFreq: 'Chỉnh riêng từng nguồn',
+    tipPerSourceFreq: 'Bật để đặt tần số riêng cho từng nguồn; tắt thì một thanh trượt chỉnh tần số cho mọi nguồn.',
+    freqOf: (i) => `Tần số S${i + 1}`,
+    tipFreqOf: 'Tần số riêng của nguồn này.',
+    moveMode: 'Di chuyển nguồn',
+    tipMoveMode: 'Bật để kéo các nguồn bằng chuột hoặc ngón tay; tắt thì bấm lên mặt nước để thả giọt (phím D).',
+    resetPositions: 'Đặt lại vị trí',
+    tipResetPositions: 'Đưa các nguồn về vị trí theo bố cục và khoảng cách đã chọn.',
+    maxima: 'Cực đại',
+    tipMaxima: 'Vẽ các đường dao động mạnh nhất (nét liền màu hổ phách), khi hình giao thoa đã ổn định.',
+    minima: 'Cực tiểu',
+    tipMinima: 'Vẽ các đường đứng yên (nét đứt màu xanh nhạt), khi hình giao thoa đã ổn định.',
+    linesNeed: 'Cần đúng 2 nguồn cùng tần số',
     tipLayout: 'Cách xếp các nguồn (phím L). Hình vuông áp dụng khi có 4 bóng.',
 
-    map: 'Khung cảnh',
-    tipMap: 'Chọn khung cảnh mặt nước (phím M).',
+    view: 'Chế độ xem',
+    tipView: 'Chọn mặt hồ, mặt biển hoặc hình vẽ 2D nhìn từ trên xuống (phím M).',
     pitch: 'Góc nhìn',
     tipPitch: 'Góc của camera so với mặt nước; 90° là nhìn thẳng từ trên xuống.',
-
-    overlay: 'Vẽ đường nút lý thuyết',
-    tipOverlay: 'Vẽ các hypebol nơi hai sóng triệt tiêu theo lý thuyết, để so với các đường đứng yên trên mặt nước (phím O).',
-    overlayNeeds2: 'Chỉ hiển thị khi có đúng 2 bóng.',
-    readout: 'Số liệu',
-    formulas: [
-      'Bước sóng: λ = v / f',
-      'Cực đại (dao động mạnh): |d₁ − d₂| = kλ',
-      'Cực tiểu (đứng yên): |d₁ − d₂| = (k + ½)λ',
-    ],
+    troughs2d: 'Đáy sóng (nét đứt)',
+    grid2d: 'Lưới tọa độ',
 
     quality: 'Chất lượng',
     qualityNames: { auto: 'Tự động', low: 'Thấp', medium: 'Trung bình', high: 'Cao' },
     tipQuality: 'Tự động hạ hoặc nâng chất lượng để giữ khoảng 60 khung hình/giây.',
-    current: (level, res, pr) => `Đang dùng: ${level} · lưới ${res}×${res} · độ phân giải ×${pr}`,
+    current: (level, nx, nz, pr) => `Đang dùng: ${level} · lưới ${nx}×${nz} · độ phân giải ×${pr}`,
     reflection: 'Mây phản chiếu trên mặt nước',
     refraction: 'Khúc xạ và màu nước sâu',
     foam: 'Bọt trên đỉnh sóng',
@@ -93,7 +98,7 @@ export const STR = {
     showFps: 'Hiện số khung hình/giây (phím F)',
     reset: 'Đặt lại mặc định',
     tipReset: 'Khôi phục mọi cài đặt về giá trị ban đầu.',
-    keys: 'Phím tắt: 1 / 2 / 4 · L bố cục · Space chạy/dừng · M cảnh · O đường nút · F FPS · H trình chiếu',
+    keys: 'Phím tắt: 1 / 2 / 4 · L bố cục · Space chạy/dừng · M chế độ xem · D di chuyển nguồn · F FPS · H trình chiếu',
   },
 
   readout: {
@@ -130,12 +135,14 @@ export const STR = {
     speed: 'đv/s',
   },
 
-  maps: {
-    hoChieuXam: 'Hồ chiều xám',
-    bienBanNgay: 'Biển ban ngày',
-    hoangHon: 'Hoàng hôn',
-    demTrang: 'Đêm trăng',
+  views: {
+    lake: 'Mặt hồ',
+    sea: 'Mặt biển',
+    twoD: '2D',
   },
+
+  // Source names everywhere (index 0..3).
+  sourceName: (i) => `S${i + 1}`,
 };
 
 // Vietnamese number format: decimal comma.

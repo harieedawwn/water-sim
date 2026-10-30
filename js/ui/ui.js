@@ -1,6 +1,6 @@
-// Settings panel: 4 tabs (Thí nghiệm, Cảnh, Lý thuyết, Hiệu năng). Every tab fits without scrolling.
+// Settings panel: 3 tabs (Thí nghiệm, Cảnh, Hiệu năng). Plain working controls; restyled in P6.
 import { STR, fmt } from './strings.js';
-import { LIMITS, WAVE_SPEED } from '../config.js';
+import { LIMITS, VIEWS, MAX_SOURCES, BALL_HEX } from '../config.js';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -25,9 +25,18 @@ function thumbStyle(m) {
     + `${css(m.water.scatter, e * 2)} 50%, ${css(m.water.deep, e * 3)} 100%)`;
 }
 
+const THUMB_2D = 'radial-gradient(circle at 50% 60%, transparent 0 18%, rgba(255,255,255,0.7) 19% 21%, '
+  + 'transparent 22% 38%, rgba(255,255,255,0.5) 39% 41%, transparent 42%), #0A0D11';
+
+// Exactly 2 sources with equal frequency: the interference lines can be drawn.
+export function linesAvailable(s) {
+  if (s.sourceCount !== 2) return false;
+  return !s.perSourceFreq || s.sourceFreqs[0] === s.sourceFreqs[1];
+}
+
 /*
-  actions: { onChange(key), resetDefaults(), close() }
-  info():  { quality: {level, simRes, pixelRatio}, readout: {...} } live values for the panel
+  maps:    MAPS (index 0 = lake, 1 = sea) for the view thumbnails
+  actions: { onChange(key), setView(id), resetPositions(), resetDefaults(), close() }
 */
 export function createSettingsPanel(container, settings, maps, actions) {
   const P = STR.panel;
@@ -83,7 +92,10 @@ export function createSettingsPanel(container, settings, maps, actions) {
   }
 
   // ---- control builders ----
-  function slider(parent, key, label, tip, lim, format) {
+  // get / set default to settings[key]; isHidden() hides the whole row.
+  function slider(parent, key, label, tip, lim, format, opts = {}) {
+    const get = opts.get || (() => settings[key]);
+    const set = opts.set || ((v) => { settings[key] = v; });
     const row = el('div', 'row');
     const lab = el('label', 'row__label tip-left', label);
     lab.dataset.tip = tip;
@@ -94,17 +106,18 @@ export function createSettingsPanel(container, settings, maps, actions) {
     input.min = String(lim.min);
     input.max = String(lim.max);
     input.step = String(lim.step);
-    lab.htmlFor = input.id = `set-${key}`;
+    lab.htmlFor = input.id = `set-${opts.id || key}`;
     input.addEventListener('input', () => {
-      settings[key] = parseFloat(input.value);
-      value.textContent = format(settings[key]);
+      set(parseFloat(input.value));
+      value.textContent = format(get());
       actions.onChange(key);
     });
     row.append(lab, input);
     parent.append(row);
     syncers.push(() => {
-      input.value = String(settings[key]);
-      value.textContent = format(settings[key]);
+      if (opts.isHidden) row.hidden = opts.isHidden();
+      input.value = String(get());
+      value.textContent = format(get());
     });
   }
 
@@ -153,78 +166,157 @@ export function createSettingsPanel(container, settings, maps, actions) {
     });
   }
 
+  function button(parent, label, tip, onClick) {
+    const b = el('button', 'btn btn--block tip-left', label);
+    b.type = 'button';
+    b.dataset.tip = tip;
+    b.addEventListener('click', onClick);
+    parent.append(b);
+    return b;
+  }
+
+  // Initial phase per source: S1..SN selector, slider with readout, quick-value chips, hint.
+  const PHASE_CHIPS = [0, 15, 30, 45, 60, 90, 180];
+  function phaseSection(parent) {
+    let sel = 0;
+    const box = el('div', 'row phase');
+    const title = el('div', 'row__label tip-left', P.phase);
+    title.dataset.tip = P.tipPhase;
+    const seg = el('div', 'seg');
+    seg.setAttribute('role', 'group');
+    seg.setAttribute('aria-label', P.phase);
+    const segBtns = [];
+    for (let i = 0; i < MAX_SOURCES; i++) {
+      const b = el('button', 'seg__btn');
+      b.type = 'button';
+      const dot = el('span', 'seg__dot');
+      dot.style.background = BALL_HEX;
+      b.append(dot, STR.sourceName(i));
+      b.addEventListener('click', () => { sel = i; sync(); });
+      seg.append(b);
+      segBtns.push(b);
+    }
+    const sliderRow = el('div', 'row');
+    const lab = el('label', 'row__label');
+    const labText = el('span');
+    const value = el('span', 'row__value');
+    lab.append(labText, value);
+    const input = el('input', 'range');
+    input.type = 'range';
+    input.min = String(LIMITS.phase.min);
+    input.max = String(LIMITS.phase.max);
+    input.step = String(LIMITS.phase.step);
+    lab.htmlFor = input.id = 'set-phase';
+    sliderRow.append(lab, input);
+    const chips = el('div', 'chips');
+    chips.setAttribute('role', 'group');
+    chips.setAttribute('aria-label', P.phase);
+    const chipBtns = PHASE_CHIPS.map((deg) => {
+      const b = el('button', 'chip', `${deg}${U.deg}`);
+      b.type = 'button';
+      b.addEventListener('click', () => setPhase(deg));
+      chips.append(b);
+      return [deg, b];
+    });
+    box.append(title, seg, sliderRow, chips, el('p', 'note', P.phaseHint));
+    parent.append(box);
+
+    function setPhase(deg) {
+      settings.phases[sel] = deg;
+      input.value = String(deg);
+      show();
+      actions.onChange('phases');
+    }
+    input.addEventListener('input', () => setPhase(parseFloat(input.value)));
+
+    function show() {
+      const v = settings.phases[sel];
+      value.textContent = `${Math.round(v)}${U.deg}`;
+      for (const [deg, b] of chipBtns) b.setAttribute('aria-pressed', String(deg === v));
+    }
+    function sync() {
+      if (sel >= settings.sourceCount) sel = settings.sourceCount - 1;
+      segBtns.forEach((b, i) => {
+        b.hidden = i >= settings.sourceCount;
+        b.setAttribute('aria-pressed', String(i === sel));
+      });
+      labText.textContent = P.phaseOf(sel);
+      input.value = String(settings.phases[sel]);
+      show();
+    }
+    syncers.push(sync);
+  }
+
+  const hz = (v) => `${fmt(v, 2)} ${U.hz}`;
+
   // ---- Tab 1: Thí nghiệm ----
   const t1 = tabs[0].body;
-  slider(t1, 'frequency', P.frequency, P.tipFrequency, LIMITS.frequency, (v) => `${fmt(v, 2)} ${U.hz}`);
+  slider(t1, 'frequency', P.frequency, P.tipFrequency, LIMITS.frequency, hz,
+    { isHidden: () => settings.perSourceFreq });
+  toggle(t1, 'perSourceFreq', P.perSourceFreq, P.tipPerSourceFreq);
+  for (let i = 0; i < MAX_SOURCES; i++) {
+    slider(t1, 'sourceFreqs', P.freqOf(i), P.tipFreqOf, LIMITS.frequency, hz, {
+      id: `sourceFreq${i}`,
+      get: () => settings.sourceFreqs[i],
+      set: (v) => { settings.sourceFreqs[i] = v; },
+      isHidden: () => !settings.perSourceFreq || i >= settings.sourceCount,
+    });
+  }
   slider(t1, 'amplitude', P.amplitude, P.tipAmplitude, LIMITS.amplitude, (v) => `${fmt(v, 3)} ${U.len}`);
   slider(t1, 'spacing', P.spacing, P.tipSpacing, LIMITS.spacing, (v) => `${fmt(v, 1)} ${U.len}`);
-  slider(t1, 'phaseOffset', P.phaseOffset, P.tipPhaseOffset, LIMITS.phaseOffset, (v) => `${Math.round(v)}${U.deg}`);
-  slider(t1, 'ballSize', P.ballSize, P.tipBallSize, LIMITS.ballSize, (v) => `${fmt(v, 2)} ${U.len}`);
+  phaseSection(t1);
   segmented(t1, 'layout', P.layout, P.tipLayout, [['hang', P.layoutHang], ['vuong', P.layoutVuong]]);
+  toggle(t1, 'moveMode', P.moveMode, P.tipMoveMode);
+  button(t1, P.resetPositions, P.tipResetPositions, () => actions.resetPositions());
+  toggle(t1, 'showMaxima', P.maxima, P.tipMaxima);
+  toggle(t1, 'showMinima', P.minima, P.tipMinima);
+  const linesNote = el('p', 'note note--warn', P.linesNeed);
+  t1.append(linesNote);
+  syncers.push(() => { linesNote.hidden = linesAvailable(settings); });
 
   // ---- Tab 2: Cảnh ----
   const t2 = tabs[1].body;
-  const mapRow = el('div', 'row');
-  const mapLab = el('div', 'row__label tip-left', P.map);
-  mapLab.dataset.tip = P.tipMap;
+  const viewRow = el('div', 'row');
+  const viewLab = el('div', 'row__label tip-left', P.view);
+  viewLab.dataset.tip = P.tipView;
   const grid = el('div', 'maps');
-  const mapBtns = maps.map((m, i) => {
+  const viewBtns = VIEWS.map((id, i) => {
     const b = el('button', 'map-btn');
     b.type = 'button';
     const th = el('span', 'map-btn__thumb');
-    th.style.background = thumbStyle(m);
-    b.append(th, el('span', 'map-btn__name', m.name));
-    b.addEventListener('click', () => {
-      settings.mapIndex = i;
-      actions.onChange('mapIndex');
-    });
+    th.style.background = id === '2d' ? THUMB_2D : thumbStyle(maps[i]);
+    const name = id === 'lake' ? STR.views.lake : id === 'sea' ? STR.views.sea : STR.views.twoD;
+    b.append(th, el('span', 'map-btn__name', name));
+    b.addEventListener('click', () => actions.setView(id));
     grid.append(b);
-    return b;
+    return [id, b];
   });
-  mapRow.append(mapLab, grid);
-  t2.append(mapRow);
-  syncers.push(() => mapBtns.forEach((b, i) => b.setAttribute('aria-pressed', String(settings.mapIndex === i))));
+  viewRow.append(viewLab, grid);
+  t2.append(viewRow);
+  syncers.push(() => { for (const [id, b] of viewBtns) b.setAttribute('aria-pressed', String(settings.view === id)); });
   slider(t2, 'cameraPitch', P.pitch, P.tipPitch, LIMITS.cameraPitch, (v) => `${Math.round(v)}${U.deg}`);
+  toggle(t2, 'show2dTroughs', P.troughs2d);
+  toggle(t2, 'show2dGrid', P.grid2d);
 
-  // ---- Tab 3: Lý thuyết ----
+  // ---- Tab 3: Hiệu năng ----
   const t3 = tabs[2].body;
-  toggle(t3, 'showOverlay', P.overlay, P.tipOverlay);
-  const overlayNote = el('p', 'note note--warn', P.overlayNeeds2);
-  t3.append(overlayNote);
-  syncers.push(() => { overlayNote.hidden = settings.sourceCount === 2; });
-  const readTitle = el('div', 'row__label', P.readout);
-  const kv = el('dl', 'kv');
-  const R = STR.readout;
-  const cells = {};
-  for (const [k, label] of [['f', R.f], ['lambda', R.lambda], ['speed', R.speed], ['d', R.d], ['ratio', R.ratio], ['nodal', R.nodal]]) {
-    kv.append(el('dt', null, label));
-    cells[k] = el('dd');
-    kv.append(cells[k]);
-  }
-  t3.append(readTitle, kv);
-  const list = el('ul', 'formulas');
-  for (const f of P.formulas) list.append(el('li', null, f));
-  t3.append(list);
-
-  // ---- Tab 4: Hiệu năng ----
-  const t4 = tabs[3].body;
   const Q = P.qualityNames;
-  segmented(t4, 'quality', P.quality, P.tipQuality, [['auto', Q.auto], ['low', Q.low], ['medium', Q.medium], ['high', Q.high]]);
+  segmented(t3, 'quality', P.quality, P.tipQuality, [['auto', Q.auto], ['low', Q.low], ['medium', Q.medium], ['high', Q.high]]);
   const qNow = el('p', 'note');
-  t4.append(qNow);
-  toggle(t4, 'reflection', P.reflection);
-  toggle(t4, 'refraction', P.refraction, null, () => qualityState.level === 'low');
-  toggle(t4, 'foam', P.foam, null, () => qualityState.level === 'low');
+  t3.append(qNow);
+  toggle(t3, 'reflection', P.reflection);
+  toggle(t3, 'refraction', P.refraction, null, () => qualityState.level === 'low');
+  toggle(t3, 'foam', P.foam, null, () => qualityState.level === 'low');
   const lowNote = el('p', 'note', P.lowNote);
-  t4.append(lowNote);
-  toggle(t4, 'showFps', P.showFps);
+  t3.append(lowNote);
+  toggle(t3, 'showFps', P.showFps);
   const resetBtn = el('button', 'btn btn--block btn--warn tip-left push-end', P.reset);
   resetBtn.type = 'button';
   resetBtn.dataset.tip = P.tipReset;
   resetBtn.addEventListener('click', () => actions.resetDefaults());
-  t4.append(resetBtn, el('p', 'note', P.keys));
+  t3.append(resetBtn, el('p', 'note', P.keys));
 
-  let qualityState = { level: 'medium', simRes: 512, pixelRatio: 1 };
+  let qualityState = { level: 'medium', nx: 0, nz: 0, pixelRatio: 1 };
 
   select(active);
 
@@ -232,17 +324,11 @@ export function createSettingsPanel(container, settings, maps, actions) {
     for (const s of syncers) s();
   }
 
-  // Live values: quality level and readout (cheap; called only when they change).
-  function setInfo(q, r) {
+  // Live quality values (cheap; called only when they change).
+  function setInfo(q) {
     qualityState = q;
-    qNow.textContent = P.current(Q[q.level], q.simRes, fmt(q.pixelRatio, 2));
+    qNow.textContent = P.current(Q[q.level], q.nx, q.nz, fmt(q.pixelRatio, 2));
     lowNote.hidden = q.level !== 'low';
-    cells.f.textContent = `${fmt(r.f, 2)} ${U.hz}`;
-    cells.lambda.textContent = `${fmt(r.lambda, 3)} ${U.len}`;
-    cells.speed.textContent = `${fmt(WAVE_SPEED, 2)} ${U.speed}`;
-    cells.d.textContent = r.d == null ? R.na : `${fmt(r.d, 2)} ${U.len}`;
-    cells.ratio.textContent = r.d == null ? R.na : fmt(r.d / r.lambda, 2);
-    cells.nodal.textContent = r.nodal == null ? R.na : String(r.nodal);
   }
 
   sync();

@@ -20,18 +20,18 @@ precision highp int;
 precision highp sampler2D;
 
 uniform sampler2D uState;
-uniform int uRes;
+uniform vec2 uRes;              // grid size in cells (nx, nz)
 uniform float uC2;              // (c_num * dt / dx)^2
 uniform float uDamp;            // velocity damping per step
-uniform float uSponge;          // sponge width in uv
+uniform float uSponge;          // sponge width in cells
 uniform float uSpongeStrength;  // extra damping per step at the very edge
-uniform vec4 uSrc[${MAX_SOURCES}];          // xy = uv, z = 1 / (2 sigma_uv^2), w = displacement this step
+uniform vec4 uSrc[${MAX_SOURCES}];          // xy = position in cells, z = 1 / (2 sigma_cells^2), w = displacement this step
 uniform int uSrcCount;
 
 out vec4 outState;
 
 float hAt(ivec2 p) {
-  return texelFetch(uState, clamp(p, ivec2(0), ivec2(uRes - 1)), 0).r;
+  return texelFetch(uState, clamp(p, ivec2(0), ivec2(uRes) - 1), 0).r;
 }
 
 void main() {
@@ -45,8 +45,8 @@ void main() {
   float lap = (4.0 * edge4 + diag - 20.0 * h) / 6.0;
 
   // Sponge layer: quadratic ramp of damping towards the border.
-  vec2 uv = (vec2(p) + 0.5) / float(uRes);
-  float edge = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y));
+  vec2 pc = vec2(p) + 0.5;
+  float edge = min(min(pc.x, pc.y), min(uRes.x - pc.x, uRes.y - pc.y));
   float sp = clamp(1.0 - edge / uSponge, 0.0, 1.0);
   sp *= sp;
 
@@ -56,7 +56,7 @@ void main() {
   for (int i = 0; i < ${MAX_SOURCES}; i++) {
     if (i >= uSrcCount) break;
     vec4 q = uSrc[i];
-    vec2 d = uv - q.xy;
+    vec2 d = pc - q.xy;
     hn += q.w * exp(-dot(d, d) * q.z);
   }
 
@@ -64,16 +64,21 @@ void main() {
 }
 `;
 
-// Resample a state texture into a target of another resolution (quality changes keep the waves).
+// Resample a state texture into a grid of another size, cell or position, by world position
+// (quality or window changes keep the waves). Same cell size + snapped origin = exact texel copy.
 export const COPY_FRAG = /* glsl */`
 precision highp float;
 precision highp int;
 precision highp sampler2D;
 uniform sampler2D uSrc;
-uniform int uRes;
+uniform vec4 uOld;              // old domain: minX, minZ, sizeX, sizeZ
+uniform vec2 uNewMin;
+uniform float uCell;            // new cell size
 out vec4 outState;
 void main() {
-  outState = vec4(texture(uSrc, gl_FragCoord.xy / float(uRes)).rg, 0.0, 1.0);
+  vec2 uv = (uNewMin + gl_FragCoord.xy * uCell - uOld.xy) / uOld.zw;
+  float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
+  outState = vec4(texture(uSrc, uv).rg * inside, 0.0, 1.0);
 }
 `;
 
@@ -150,21 +155,22 @@ vec3 skyAmbient(vec3 n) {
 `;
 
 // ---------- Water surface (single pass) ----------
-// Defines: REFRACTION (subsurface gradient + optional sandy floor), FOAM, CHEAP_SKY.
+// The mesh is a unit grid stretched over the simulated domain, which always covers the screen.
+// Defines: REFRACTION (subsurface gradient + optional sandy floor), FOAM, CHEAP_SKY,
+// LINES (interference maxima / minima drawn on the surface, see js/lines.js).
 
 export const WATER_VERT = /* glsl */`
 uniform sampler2D uHeight;
-uniform float uHalf;
+uniform vec4 uDomain;           // minX, minZ, sizeX, sizeZ (world)
 uniform float uDisp;
 
 varying vec3 vWorld;
 varying vec2 vSimUv;
 
 void main() {
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vec2 uv = wp.xz / (2.0 * uHalf) + 0.5;
-  float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-  wp.y += texture(uHeight, clamp(uv, 0.0, 1.0)).r * uDisp * inside;
+  vec2 uv = position.xz;
+  vec4 wp = vec4(uDomain.x + uv.x * uDomain.z, 0.0, uDomain.y + uv.y * uDomain.w, 1.0);
+  wp.y += texture(uHeight, uv).r * uDisp;
   vWorld = wp.xyz;
   vSimUv = uv;
   gl_Position = projectionMatrix * viewMatrix * wp;
@@ -173,8 +179,8 @@ void main() {
 
 export const WATER_FRAG = /* glsl */`
 uniform sampler2D uHeight;
-uniform vec2 uTexel;            // 1 / res
-uniform float uCell;            // world size of one texel
+uniform vec2 uTexel;            // 1 / grid size
+uniform float uCell;            // world size of one (square) cell
 uniform float uTime;
 uniform float uNormalStrength;
 uniform float uMicro;
@@ -194,10 +200,17 @@ uniform float uFoam;
 uniform float uExposure;
 uniform vec4 uBalls[${MAX_BALLS}];         // xyz centre, w radius
 uniform int uBallCount;
-#ifdef OVERLAY
-uniform vec4 uOverlaySrc;       // xy = source 0 (x, z), zw = source 1 (x, z)
-uniform float uOverlayLambda;
-uniform float uOverlayPhase;    // phase offset of source 1, in cycles
+#ifdef LINES
+uniform vec4 uLineSrc;          // xy = S1 (x, z), zw = S2 (x, z)
+uniform float uLineLambda;
+uniform float uLineCycles;      // (phase S2 - phase S1) / 2 pi
+uniform vec2 uLineReach;        // stable radius around S1 and S2 (lines show inside both)
+uniform float uLineFade;        // radius over which a line fades in behind the reach
+uniform vec2 uLineOn;           // maxima, minima (0 or 1)
+uniform float uLinePx;          // half line width, framebuffer px
+uniform float uLineDash;        // dash period of the minima, world units
+uniform vec3 uLineMaxColor;     // display (sRGB) colours, mixed after tone mapping
+uniform vec3 uLineMinColor;
 #endif
 
 varying vec3 vWorld;
@@ -218,14 +231,12 @@ vec2 microSlope(vec2 p, float t) {
 }
 
 void main() {
-  vec2 uv = vSimUv;
-  float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-  vec2 cuv = clamp(uv, 0.0, 1.0);
-  float hC = texture(uHeight, cuv).r * inside;
-  float hL = texture(uHeight, cuv - vec2(uTexel.x, 0.0)).r * inside;
-  float hR = texture(uHeight, cuv + vec2(uTexel.x, 0.0)).r * inside;
-  float hD = texture(uHeight, cuv - vec2(0.0, uTexel.y)).r * inside;
-  float hU = texture(uHeight, cuv + vec2(0.0, uTexel.y)).r * inside;
+  vec2 cuv = clamp(vSimUv, 0.0, 1.0);
+  float hC = texture(uHeight, cuv).r;
+  float hL = texture(uHeight, cuv - vec2(uTexel.x, 0.0)).r;
+  float hR = texture(uHeight, cuv + vec2(uTexel.x, 0.0)).r;
+  float hD = texture(uHeight, cuv - vec2(0.0, uTexel.y)).r;
+  float hU = texture(uHeight, cuv + vec2(0.0, uTexel.y)).r;
 
   vec3 toCam = cameraPosition - vWorld;
   float dist = length(toCam);
@@ -295,20 +306,41 @@ void main() {
   col = mix(col, hazeColor(V) * uExposure, haze);
   alpha = mix(alpha, 1.0, haze);
 
-#ifdef OVERLAY
-  // Theoretical nodal lines. Source i emits sin(w t + phi_i - k r_i); the two cancel where
-  // (r1 - r0) / lambda - phi1 / (2 pi) = m + 1/2.
-  float ox = (distance(vWorld.xz, uOverlaySrc.zw) - distance(vWorld.xz, uOverlaySrc.xy)) / uOverlayLambda - uOverlayPhase;
-  float od = abs(fract(ox) - 0.5);
-  float ow = fwidth(ox);
-  float line = (1.0 - smoothstep(0.5 * ow, 1.5 * ow, od)) * inside;
-  col = mix(col, vec3(1.8, 1.25, 0.15), line * 0.9);
-  alpha = mix(alpha, 1.0, line);
-#endif
-
   gl_FragColor = vec4(col, alpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
+
+#ifdef LINES
+  // Source i emits sin(w t + phi_i - k r_i). With x = (r2 - r1) / lambda - (phi2 - phi1) / 2 pi,
+  // maxima lie on integer x, minima on half-integer x (only |r2 - r1| <= d exists, automatically).
+  float r1 = distance(vWorld.xz, uLineSrc.xy);
+  float r2 = distance(vWorld.xz, uLineSrc.zw);
+  float lx = (r2 - r1) / uLineLambda - uLineCycles;
+  float lw = max(fwidth(lx), 1e-6);
+  float vis = clamp(min(uLineReach.x - r1, uLineReach.y - r2) / uLineFade, 0.0, 1.0)
+            * smoothstep(0.5, 0.65, min(r1, r2));     // keep clear of the balls
+  float pxMax = abs(fract(lx + 0.5) - 0.5) / lw;     // distance to the line in px
+  float pxMin = abs(fract(lx) - 0.5) / lw;
+  // Dashes of the minima: approximate arc length from the hyperbola vertex,
+  // L = sqrt(b^2 sinh^2 s + a^2 (cosh s - 1)^2) with cosh s = (r1 + r2) / d (exact for a = 0 or b = 0).
+  float dd = max(distance(uLineSrc.xy, uLineSrc.zw), 1e-4);
+  float ch = max((r1 + r2) / dd, 1.0);
+  float ha = 0.5 * abs(r2 - r1);
+  float hb2 = max(0.25 * dd * dd - ha * ha, 0.0);
+  float arc = sqrt(hb2 * (ch * ch - 1.0) + ha * ha * (ch - 1.0) * (ch - 1.0));
+  float dash = step(fract(arc / uLineDash), 0.6);
+  float onMax = uLineOn.x * vis;
+  float onMin = uLineOn.y * vis * dash;
+  // Thin dark casing keeps both colours readable on the dark lake and the bright sea.
+  float casing = max(onMax * (1.0 - smoothstep(uLinePx + 0.5, uLinePx + 1.5, pxMax)),
+                     onMin * (1.0 - smoothstep(uLinePx + 0.5, uLinePx + 1.5, pxMin)));
+  float lMax = onMax * (1.0 - smoothstep(uLinePx - 0.5, uLinePx + 0.5, pxMax));
+  float lMin = onMin * (1.0 - smoothstep(uLinePx - 0.5, uLinePx + 0.5, pxMin));
+  gl_FragColor.rgb *= 1.0 - 0.45 * casing;
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, uLineMaxColor, lMax);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, uLineMinColor, lMin);
+  gl_FragColor.a = max(gl_FragColor.a, casing);
+#endif
 }
 `;
 
@@ -328,9 +360,10 @@ void main() {
 
 export const BALL_FRAG = /* glsl */`
 uniform sampler2D uHeight;
-uniform float uHalf;
+uniform vec4 uDomain;           // minX, minZ, sizeX, sizeZ (world)
 uniform float uDisp;
 uniform vec3 uColor;
+uniform float uHighlight;       // 0..1, hovered in move mode
 uniform vec3 uSunDir;
 uniform vec3 uSunColor;
 uniform float uSunLight;
@@ -359,10 +392,11 @@ void main() {
   R.y = max(R.y, 0.02);
   float F = 0.04 + 0.96 * pow(1.0 - max(dot(N, V), 0.0), 5.0);
   col = mix(col, skyColor(normalize(R)), F * 0.35);
+  col += uHighlight * (0.35 * uColor + vec3(0.9) * pow(1.0 - max(dot(N, V), 0.0), 3.0));
 
   // Water line and submerged tint: light travels down to this depth and back up,
   // so the transmitted colour falls off with the same extinction as the water body.
-  vec2 uv = vWorld.xz / (2.0 * uHalf) + 0.5;
+  vec2 uv = (vWorld.xz - uDomain.xy) / uDomain.zw;
   float wh = texture(uHeight, clamp(uv, 0.0, 1.0)).r * uDisp;
   float depth = wh - vWorld.y;
   col *= 1.0 - 0.3 * smoothstep(0.04, 0.0, abs(depth));

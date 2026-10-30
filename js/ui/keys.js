@@ -1,4 +1,4 @@
-// Keyboard shortcuts: 1 2 4 balls, L layout, Space sources, M map, O overlay, F fps, T tuning,
+// Keyboard shortcuts: 1 2 4 balls, L layout, Space sources, M next view, D move mode, F fps, T tuning,
 // H presentation, Esc leaves presentation / closes the settings panel.
 
 const CODES = {
@@ -7,8 +7,8 @@ const CODES = {
   Digit4: ['setCount', 4], Numpad4: ['setCount', 4],
   KeyL: ['toggleLayout'],
   Space: ['toggleRunning'],
-  KeyM: ['nextMap'],
-  KeyO: ['toggleOverlay'],
+  KeyM: ['nextView'],
+  KeyD: ['toggleMoveMode'],
   KeyF: ['toggleFps'],
   KeyT: ['toggleTuning'],
   KeyH: ['togglePresentation'],

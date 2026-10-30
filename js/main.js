@@ -2,12 +2,17 @@
 import * as THREE from 'three';
 import { STR } from './ui/strings.js';
 import { showError, installShaderErrorHook } from './ui/errors.js';
-import { loadSettings, saveSettings, sanitize, WORLD_HALF, WAVE_SPEED } from './config.js';
+import { loadSettings, saveSettings, sanitize, WAVE_SPEED, WORLD_SIZE, LIMITS, VIEWS } from './config.js';
 import { WaterSim } from './water/sim.js';
 import { WaterSurface } from './water/surface.js';
 import { MAPS, MapBlender } from './maps.js';
 import { SourceManager } from './sources.js';
 import { Balls } from './balls.js';
+import { Framing, CAMERA_FOV } from './framing.js';
+import { InterferenceLines, LINE_COLORS } from './lines.js';
+import { SourceLabels } from './labels.js';
+import { View2D } from './view2d.js';
+import { installPointer } from './pointer.js';
 import { QualityController } from './quality.js';
 import { createToolbar } from './ui/toolbar.js';
 import { createSettingsPanel } from './ui/ui.js';
@@ -15,11 +20,8 @@ import { createHud, nodalLines } from './ui/hud.js';
 import { createTuningPanel } from './ui/tuning.js';
 import { installKeys } from './ui/keys.js';
 
-const CAMERA_DISTANCE = 11;
-const CAMERA_FOV = 50;
-const DROP_INTERVAL = 0.05;   // s between drops while dragging
-const DROP_LIMIT = WORLD_HALF * 0.88;
 const HINT_SECONDS = 2.5;
+const MAP_OF_VIEW = { lake: 0, sea: 1 };   // 3D views -> MAPS index
 
 window.__rippleStarted = true;   // tells the static fallback in index.html that scripts run
 
@@ -39,17 +41,19 @@ function start() {
   }
 
   const settings = loadSettings();
-  settings.mapIndex = Math.min(settings.mapIndex, MAPS.length - 1);
-
   const canvas = document.getElementById('scene');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   installShaderErrorHook(renderer);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
+  const camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.05, 200);
+  const framing = new Framing(camera);
+  framing.update(window.innerWidth, window.innerHeight, settings.cameraPitch);
+
   let sim;
   try {
-    sim = new WaterSim(renderer, { res: settings.simRes });
+    sim = new WaterSim(renderer, { cell: WORLD_SIZE / settings.simRes, domain: framing.domain });
   } catch (e) {
     if (e.code === 'NO_FLOAT_RT') {
       showError(STR.err.floatTitle, STR.err.float, STR.err.floatHint);
@@ -59,23 +63,20 @@ function start() {
     throw e;
   }
 
-  const blender = new MapBlender(settings.mapIndex);
+  const blender = new MapBlender(MAP_OF_VIEW[settings.view] ?? 0);
   const scene = new THREE.Scene();
   scene.background = new THREE.Color();
 
-  const camera = new THREE.PerspectiveCamera(CAMERA_FOV, window.innerWidth / window.innerHeight, 0.05, 200);
-  function placeCamera() {
-    const p = THREE.MathUtils.degToRad(Math.min(settings.cameraPitch, 89.9));
-    camera.position.set(0, CAMERA_DISTANCE * Math.sin(p), CAMERA_DISTANCE * Math.cos(p));
-    camera.lookAt(0, 0, 0);
-  }
-  placeCamera();
-
-  const surface = new WaterSurface();
+  const surface = new WaterSurface(sim, LINE_COLORS);
   scene.add(surface.mesh);
-  const sources = new SourceManager(sim);
+  const sources = new SourceManager(sim, framing);
   sources.apply(settings);
-  const balls = new Balls(scene);
+  const balls = new Balls(scene, sim);
+  const lines = new InterferenceLines();
+  const uiRoot = document.getElementById('ui');
+  const labels = new SourceLabels(uiRoot);
+  const view2d = new View2D(canvas);
+  view2d.resize(framing.width, framing.height);
 
   function applyEnvironment() {
     const p = blender.current;
@@ -86,16 +87,34 @@ function start() {
   blender.update(0);
   applyEnvironment();
 
+  // ---- Views: the 2D view stops the GPU sim but keeps the clock and the sources running ----
+  let in2d = false;
+  let leftAt = 0;
+  function applyView() {
+    const want2d = settings.view === '2d';
+    if (want2d && !in2d) {
+      leftAt = sim.renderTime;
+    } else if (!want2d && in2d) {
+      sources.rebase(sim.renderTime - leftAt, leftAt);
+      quality.meter.reset();
+    }
+    in2d = want2d;
+    if (!want2d) blender.setIndex(MAP_OF_VIEW[settings.view]);
+    view2d.setVisible(want2d);
+    labels.setVisible(!want2d);
+    if (pointer) pointer.refresh();
+  }
+
   // ---- UI ----
-  const uiRoot = document.getElementById('ui');
   const hud = createHud(uiRoot);
   const ui = { settingsOpen: false, presenting: false };
   let panel = null;
   let toolbar = null;
   let tuning = null;
   let quality = null;
+  let pointer = null;
 
-  const overlayOn = () => settings.showOverlay && settings.sourceCount === 2;
+  const linesWanted = () => settings.showMaxima || settings.showMinima;
 
   function applyFeatures() {
     const step = quality ? quality.current : { refraction: true, foam: true };
@@ -103,7 +122,7 @@ function start() {
       reflection: settings.reflection,
       refraction: settings.refraction && step.refraction,
       foam: settings.foam && step.foam,
-      overlay: overlayOn(),
+      lines: linesWanted(),
     });
   }
 
@@ -112,23 +131,31 @@ function start() {
     renderer.setSize(window.innerWidth, window.innerHeight, false);
   }
 
-  // Readout values (also shown in the Lý thuyết tab).
+  // Camera, simulated domain, 2D mapping and source positions follow the window and the view angle.
+  function applyFraming() {
+    framing.update(window.innerWidth, window.innerHeight, settings.cameraPitch);
+    sim.setDomain(framing.domain);
+    sources.refit();
+    view2d.resize(framing.width, framing.height);
+  }
+
+  // HUD readout and quality info.
   const readout = { f: 0, lambda: 0, d: null, nodal: null };
-  const qualityInfo = { level: 'medium', simRes: 512, pixelRatio: 1 };
+  const qualityInfo = { level: 'medium', nx: 0, nz: 0, pixelRatio: 1 };
   function refreshInfo() {
-    readout.f = settings.frequency;
-    readout.lambda = WAVE_SPEED / settings.frequency;
-    const p = sources.positions;
-    readout.d = sources.count >= 2 ? Math.hypot(p[2] - p[0], p[3] - p[1]) : null;
-    readout.nodal = sources.count === 2 && settings.phaseOffset === 0 ? nodalLines(readout.d, readout.lambda) : null;
+    readout.f = sources.freqs[0];
+    readout.lambda = WAVE_SPEED / readout.f;
+    readout.d = sources.count >= 2 ? sources.distance12 : null;
+    readout.nodal = sources.count === 2 && settings.phases[0] === settings.phases[1] && sources.freqs[0] === sources.freqs[1]
+      ? nodalLines(readout.d, readout.lambda) : null;
     hud.setReadout(readout);
-    if (quality) {
-      const s = quality.current;
-      qualityInfo.level = s.level;
-      qualityInfo.simRes = sim.res;
+    if (quality && panel) {
+      qualityInfo.level = quality.current.level;
+      qualityInfo.nx = sim.nx;
+      qualityInfo.nz = sim.nz;
       qualityInfo.pixelRatio = renderer.getPixelRatio();
+      panel.setInfo(qualityInfo);
     }
-    if (panel) panel.setInfo(qualityInfo, readout);
   }
 
   let saveTimer = 0;
@@ -139,7 +166,7 @@ function start() {
 
   quality = new QualityController(settings.quality, (step) => {
     applyPixelRatio(step.pixelRatio);
-    sim.setResolution(step.simRes);
+    sim.setCellSize(WORLD_SIZE / step.simRes);
     settings.simRes = step.simRes;
     applyFeatures();
     if (panel) {
@@ -156,11 +183,14 @@ function start() {
   }
 
   function onChange(key) {
+    // Unlinking the frequencies starts every source at the linked value, so nothing jumps.
+    if (key === 'perSourceFreq' && settings.perSourceFreq) settings.sourceFreqs.fill(settings.frequency);
     sources.apply(settings);
     switch (key) {
-      case 'cameraPitch': placeCamera(); break;
-      case 'mapIndex': blender.setIndex(settings.mapIndex); if (tuning) tuning.sync(); break;
+      case 'cameraPitch': applyFraming(); break;
+      case 'view': applyView(); if (tuning) tuning.sync(); break;
       case 'quality': quality.setMode(settings.quality, performance.now() / 1000); break;
+      case 'moveMode': pointer.refresh(); break;
       default: break;
     }
     applyFeatures();
@@ -171,8 +201,8 @@ function start() {
   function resetDefaults() {
     Object.assign(settings, sanitize(null));
     sources.apply(settings);
-    placeCamera();
-    blender.setIndex(settings.mapIndex);
+    applyFraming();
+    applyView();
     if (tuning) tuning.sync();
     quality.setMode(settings.quality, performance.now() / 1000);
     applyFeatures();
@@ -207,19 +237,33 @@ function start() {
   }
   document.addEventListener('fullscreenchange', () => toolbar.sync(ui));
 
+  // Actions shared by the toolbar, the panel, the keys and the pointer (the P6 UI contract).
   const setCount = (n) => { settings.sourceCount = n; onChange('sourceCount'); };
   const toggleRunning = () => { settings.sourcesRunning = !settings.sourcesRunning; onChange('sourcesRunning'); };
+  const setView = (id) => { settings.view = id; onChange('view'); };
+  const nextView = () => setView(VIEWS[(VIEWS.indexOf(settings.view) + 1) % VIEWS.length]);
+  const toggleMoveMode = () => { settings.moveMode = !settings.moveMode; onChange('moveMode'); };
+  const clearWaves = () => {
+    sim.reset();
+    sources.restart();
+  };
+  const resetPositions = () => {
+    sources.resetPositions();
+    refreshInfo();
+  };
 
   toolbar = createToolbar(uiRoot, settings, {
     setCount,
     toggleRunning,
-    clearWaves: () => sim.reset(),
+    clearWaves,
     toggleSettings: () => setSettingsOpen(!ui.settingsOpen),
     togglePresentation: () => setPresenting(!ui.presenting),
     toggleFullscreen,
   });
   panel = createSettingsPanel(uiRoot, settings, MAPS, {
     onChange,
+    setView,
+    resetPositions,
     resetDefaults,
     close: () => setSettingsOpen(false),
   });
@@ -229,8 +273,8 @@ function start() {
     setCount,
     toggleRunning,
     toggleLayout: () => { settings.layout = settings.layout === 'hang' ? 'vuong' : 'hang'; onChange('layout'); },
-    nextMap: () => { settings.mapIndex = (settings.mapIndex + 1) % MAPS.length; onChange('mapIndex'); },
-    toggleOverlay: () => { settings.showOverlay = !settings.showOverlay; onChange('showOverlay'); },
+    nextView,
+    toggleMoveMode,
     toggleFps: () => { settings.showFps = !settings.showFps; onChange('showFps'); },
     toggleTuning: () => tuning.toggle(),
     togglePresentation: () => setPresenting(!ui.presenting),
@@ -240,47 +284,31 @@ function start() {
     },
   });
 
+  // ---- Pointer: drops, or dragging sources in move mode ----
+  pointer = installPointer(canvas, framing, sources, () => ({ is2d: in2d, moveMode: settings.moveMode }), {
+    drop: (x, z) => sources.addDrop(x, z),
+    moveSource: (i, x, z) => {
+      if (!sources.moveTo(i, x, z)) return;
+      if (sources.count === 2) {
+        // Keep the spacing slider in sync without re-applying the layout.
+        const d = Math.round(sources.distance12 * 10) / 10;
+        settings.spacing = Math.min(LIMITS.spacing.max, Math.max(LIMITS.spacing.min, d));
+        sources.spacing = settings.spacing;
+        if (ui.settingsOpen) panel.sync();
+        scheduleSave();
+      }
+      refreshInfo();
+    },
+  });
+
+  applyView();
   applyFeatures();
   syncUi();
 
-  // ---- Mouse drops on the water ----
-  const raycaster = new THREE.Raycaster();
-  const ndc = new THREE.Vector2();
-  const waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-  const hit = new THREE.Vector3();
-  let dragging = false;
-  let dropTimer = 0;
-  let pointerX = 0;
-  let pointerY = 0;
-
-  function dropAtPointer() {
-    ndc.set((pointerX / window.innerWidth) * 2 - 1, -(pointerY / window.innerHeight) * 2 + 1);
-    raycaster.setFromCamera(ndc, camera);
-    if (!raycaster.ray.intersectPlane(waterPlane, hit)) return;
-    if (Math.abs(hit.x) < DROP_LIMIT && Math.abs(hit.z) < DROP_LIMIT) sources.addDrop(hit.x, hit.z);
-  }
-
-  canvas.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
-    dragging = true;
-    canvas.setPointerCapture(e.pointerId);
-    pointerX = e.clientX;
-    pointerY = e.clientY;
-    dropTimer = 0;
-    dropAtPointer();
-  });
-  canvas.addEventListener('pointermove', (e) => {
-    pointerX = e.clientX;
-    pointerY = e.clientY;
-  });
-  const endDrag = () => { dragging = false; };
-  canvas.addEventListener('pointerup', endDrag);
-  canvas.addEventListener('pointercancel', endDrag);
-
   window.addEventListener('resize', () => {
     applyPixelRatio(quality.current.pixelRatio);
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
+    applyFraming();
+    refreshInfo();
   });
 
   canvas.addEventListener('webglcontextlost', (e) => {
@@ -296,29 +324,29 @@ function start() {
     try {
       const dt = last < 0 ? 0 : Math.min((now - last) / 1000, 0.1);
       last = now;
-      quality.update(now / 1000);
-      if (dragging) {
-        dropTimer += dt;
-        if (dropTimer >= DROP_INTERVAL) {
-          dropTimer = 0;
-          dropAtPointer();
-        }
-      }
-      if (blender.update(dt)) applyEnvironment();
+      pointer.tick(dt);
       const emitters = sources.update(dt);
-      sources.afterStep(sim.step(dt, emitters));
-      balls.update(sim, sources);
-      surface.update(sim, sim.renderTime, balls);
-      if (overlayOn()) {
-        const p = sources.positions;
-        surface.setOverlay(p[0], p[1], p[2], p[3], WAVE_SPEED / settings.frequency, sources.phaseOffset);
+      if (in2d) {
+        quality.meter.tick(now / 1000);   // FPS readout only; adaptive quality is for the 3D views
+        sim.advanceTime(dt);
+        lines.update(settings, sources);
+        view2d.draw(framing, sources, lines, settings, pointer.hover);
+      } else {
+        quality.update(now / 1000);
+        if (blender.update(dt)) applyEnvironment();
+        sources.afterStep(sim.step(dt, emitters));
+        balls.update(sim, sources, pointer.hover);
+        surface.update(sim, sim.renderTime, balls);
+        lines.update(settings, sources);
+        if (linesWanted()) surface.setLines(lines, renderer.getPixelRatio(), framing.scale2d);
+        labels.update(framing, sources);
+        renderer.render(scene, camera);
       }
       hudTimer += dt;
       if (settings.showFps && hudTimer > 0.5) {
         hudTimer = 0;
         hud.setFps(quality.meter.fps, STR.panel.qualityNames[quality.current.level]);
       }
-      renderer.render(scene, camera);
     } catch (err) {
       renderer.setAnimationLoop(null);
       showError(STR.err.loop, err);
