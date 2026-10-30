@@ -15,6 +15,8 @@ const GRID_MIN_PX = 40;
 const CURVE_SAMPLES = 128;
 const NEAR_SOURCE = 0.6;                        // world units kept clear around a marker
 const TWO_PI = Math.PI * 2;
+const MAX_DPR = 2;                              // a 3x canvas costs 2.25x the fill for no visible gain on thin lines
+const RING_STEPS = 96;                          // angular samples used to find the on-screen part of a ring
 
 export class View2D {
   constructor(sceneCanvas) {
@@ -32,6 +34,13 @@ export class View2D {
     this._dashMin = [7, 5];
     this._dashLink = [6, 5];
     this._noDash = [];
+    this._cos = new Float32Array(RING_STEPS);
+    this._sin = new Float32Array(RING_STEPS);
+    this._on = new Uint8Array(RING_STEPS);
+    for (let k = 0; k < RING_STEPS; k++) {
+      this._cos[k] = Math.cos((k * TWO_PI) / RING_STEPS);
+      this._sin[k] = Math.sin((k * TWO_PI) / RING_STEPS);
+    }
     this._fontPx = 0;
     this._font = '';
   }
@@ -41,7 +50,7 @@ export class View2D {
   setVisible(v) { this.canvas.hidden = !v; }
 
   resize(width, height) {
-    this.dpr = Math.min(window.devicePixelRatio || 1, 3);
+    this.dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
     const w = Math.round(width * this.dpr);
     const h = Math.round(height * this.dpr);
     if (this.canvas.width !== w) this.canvas.width = w;
@@ -96,7 +105,9 @@ export class View2D {
     const ctx = this.ctx;
     const t = sources.time;
     const p = sources.positions;
-    const diag = Math.hypot(f.width, f.height) / f.scale2d;
+    const W = f.width;
+    const H = f.height;
+    const scale = f.scale2d;
     ctx.strokeStyle = WAVE;
     for (let pass = troughs ? 0 : 1; pass < 2; pass++) {
       const crest = pass === 1;              // troughs first, crests on top
@@ -109,24 +120,70 @@ export class View2D {
         const sc = f.worldToScreen2d(p[i * 2], p[i * 2 + 1], this._s);
         const sx = sc.x;
         const sy = sc.y;
+        // Only rings whose radius lies between the nearest and the farthest point of the screen can be seen.
+        const rMin = Math.hypot(Math.max(0, -sx, sx - W), Math.max(0, -sy, sy - H));
+        const rMax = Math.hypot(Math.max(sx, W - sx), Math.max(sy, H - sy));
         // Emission times t_n = (n + phaseAt - cyc) / f inside [start, min(t, stop)], not yet off screen.
-        const tFrom = Math.max(sources.start[i], t - diag / WAVE_SPEED);
+        const tFrom = Math.max(sources.start[i], t - rMax / (scale * WAVE_SPEED));
         const tTo = Math.min(t, sources.stop[i]);
         const n0 = Math.ceil(tFrom * fr - phaseAt + cyc);
         const n1 = Math.floor(tTo * fr - phaseAt + cyc);
         for (let n = n0; n <= n1; n++) {
           const r = WAVE_SPEED * (t - (n + phaseAt - cyc) / fr);
-          if (r <= 0) continue;
+          const rPx = r * scale;
+          if (r <= 0 || rPx < rMin - 2) continue;
           // Amplitude falls off as 1 / sqrt(r); keep far rings readable.
           const a = Math.max(0.3, 0.95 / Math.sqrt(1 + r / 1.5));
           ctx.globalAlpha = crest ? a : a * 0.5;
           ctx.beginPath();
-          ctx.arc(sx, sy, r * f.scale2d, 0, TWO_PI);
+          this._ring(sx, sy, rPx, W, H);
           ctx.stroke();
         }
       }
     }
     ctx.globalAlpha = 1;
+  }
+
+  // Adds the on-screen part of a circle to the current path. Off-screen arcs are skipped, which matters
+  // most for dashed rings: dash generation is proportional to the whole circumference.
+  _ring(cx, cy, r, W, H) {
+    const ctx = this.ctx;
+    const n = RING_STEPS;
+    const on = this._on;
+    const cs = this._cos;
+    const sn = this._sin;
+    const pad = 4;
+    let count = 0;
+    for (let k = 0; k < n; k++) {
+      const x = cx + r * cs[k];
+      const y = cy + r * sn[k];
+      on[k] = x >= -pad && x <= W + pad && y >= -pad && y <= H + pad ? 1 : 0;
+      count += on[k];
+    }
+    if (count === n || r < 24) {
+      ctx.arc(cx, cy, r, 0, TWO_PI);
+      return;
+    }
+    if (count === 0) {
+      // Sampling can miss a short chord (a ring just grazing a corner); the pixel cost of drawing it whole
+      // is only paid for small rings, so skip.
+      return;
+    }
+    // Start at an off-screen sample so no run wraps around index 0.
+    let first = 0;
+    while (on[first]) first++;
+    const step = TWO_PI / n;
+    let k = 0;
+    while (k < n) {
+      const a = (first + k) % n;
+      if (!on[a]) { k++; continue; }
+      let len = 0;
+      while (k + len < n && on[(first + k + len) % n]) len++;
+      const a0 = (first + k) * step - step;
+      ctx.moveTo(cx + r * Math.cos(a0), cy + r * Math.sin(a0));
+      ctx.arc(cx, cy, r, a0, a0 + (len + 1) * step + step);
+      k += len;
+    }
   }
 
   // Hyperbola branches r2 - r1 = delta. In the frame centred between S1 and S2 (X along S1 -> S2):
