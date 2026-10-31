@@ -47,3 +47,4 @@ P6 notes: no tabs any more (one scrolling panel, collapsed "Nâng cao"); view pi
 readout shows only f and lambda (one pair, or one line per source when frequencies differ); .glass renamed .plate (flat, no blur). Checked: node --check, one load at 1280x720 and 390x844 (settings open), no console errors.
 Not run: phone landscape, real touch drag, tuning panel / error overlay visual check, projector contrast.
 Next: done
+P7 [x] glass title (left of centre) + school name top right above the HUD; paper sample 0.41x; envelope-contour lines for 3-4 equal-frequency sources (3D shader + cached 2D marching squares); first-visit guided tour (js/ui/tour.js, key ripple.tour.v1).

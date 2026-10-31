@@ -21,6 +21,7 @@ import { createHud } from './ui/hud.js';
 import { createChrome } from './ui/chrome.js';
 import { createTuningPanel } from './ui/tuning.js';
 import { installKeys } from './ui/keys.js';
+import { createTour } from './ui/tour.js';
 
 const HINT_SECONDS = 2.5;
 const MAP_OF_VIEW = { lake: 0, sea: 1 };   // 3D views -> MAPS index
@@ -293,7 +294,15 @@ function start() {
     resetPositions,
     resetDefaults,
     close: () => setSettingsOpen(false),
+    replayTour: () => tour.start(),
   });
+  // Guided tour: above everything (appended to body), auto-starts once after the first frame.
+  const tour = createTour(document.body, {
+    isSettingsOpen: () => ui.settingsOpen,
+    setSettingsOpen,
+    canAutoStart: () => !ui.presenting && !document.querySelector('.errors:not([hidden])'),
+  });
+  let tourPending = true;
   tuning = createTuningPanel(uiRoot, blender);
 
   installKeys({
@@ -369,6 +378,10 @@ function start() {
         if (linesWanted()) surface.setLines(lines, renderer.getPixelRatio(), framing.scale2d);
         labels.update(framing, sources, balls.radius);
         renderer.render(scene, camera);
+      }
+      if (tourPending) {
+        tourPending = false;
+        setTimeout(() => tour.autoStart(), 600);
       }
       hudTimer += dt;
       if (settings.showFps && hudTimer > 0.5) {

@@ -28,7 +28,7 @@ export function linesAvailable(s) {
 }
 
 /*
-  actions: { onChange(key), setView(id), resetPositions(), resetDefaults(), close() }
+  actions: { onChange(key), setView(id), resetPositions(), resetDefaults(), close(), replayTour() }
 */
 export function createSettingsPanel(container, settings, actions) {
   const P = STR.panel;
@@ -171,7 +171,7 @@ export function createSettingsPanel(container, settings, actions) {
 
   // ---- Nguồn sóng ----
   const secSrc = section(P.secSources);
-  toggle(secSrc, 'moveMode', P.moveMode, P.tipMoveMode);
+  toggle(secSrc, 'moveMode', P.moveMode, P.tipMoveMode).dataset.tour = 'move';
   slider(secSrc, 'frequency', P.frequency, P.tipFrequency, LIMITS.frequency, hz,
     { isHidden: () => settings.perSourceFreq });
   toggle(secSrc, 'perSourceFreq', P.perSourceFreq, P.tipPerSourceFreq);
@@ -187,6 +187,7 @@ export function createSettingsPanel(container, settings, actions) {
 
   // ---- Đường giao thoa ----
   const secLines = section(P.secLines);
+  secLines.dataset.tour = 'lines';
   toggle(secLines, 'showMaxima', P.maxima, P.tipMaxima);
   toggle(secLines, 'showMinima', P.minima, P.tipMinima);
   const legend = el('ul', 'legend');
@@ -261,6 +262,7 @@ export function createSettingsPanel(container, settings, actions) {
   const lowNote = note(adv, P.lowNote);
   toggle(adv, 'showFps', P.showFps);
   button(adv, ICONS.reset, P.reset, P.tipReset, () => actions.resetDefaults(), 'btn--warn');
+  if (actions.replayTour) button(body, ICONS.play, STR.tour.replay, null, () => actions.replayTour(), 'tour-replay');
 
   let qualityState = { level: 'medium', nx: 0, nz: 0, pixelRatio: 1 };
 
