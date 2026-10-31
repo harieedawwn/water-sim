@@ -1,4 +1,4 @@
-// Bottom toolbar: ball count, run/stop sources, clear waves, settings, presentation, fullscreen.
+// Bottom toolbar: ball count, run/stop sources, freeze frame, clear waves, settings, presentation, fullscreen.
 import { STR } from './strings.js';
 import { ICONS } from './icons.js';
 
@@ -13,7 +13,7 @@ function button(cls, tip) {
   return b;
 }
 
-// actions: { setCount(n), toggleRunning(), clearWaves(), toggleSettings(), togglePresentation(), toggleFullscreen() }
+// actions: { setCount(n), toggleRunning(), toggleFreeze(), clearWaves(), toggleSettings(), togglePresentation(), toggleFullscreen() }
 export function createToolbar(container, settings, actions) {
   const T = STR.toolbar;
   const bar = document.createElement('div');
@@ -52,6 +52,10 @@ export function createToolbar(container, settings, actions) {
   const runBtn = button('btn btn--run', T.tipRun);
   runBtn.addEventListener('click', () => { actions.toggleRunning(); runBtn.blur(); });
 
+  // Freeze frame: stops time for the whole water (not only the emitters).
+  const freezeBtn = button('btn', T.tipFreeze);
+  freezeBtn.addEventListener('click', () => { actions.toggleFreeze(); freezeBtn.blur(); });
+
   const clearBtn = button('btn', T.tipClear);
   clearBtn.innerHTML = `${ICONS.clear}<span class="btn__text">${T.clear}</span>`;
   clearBtn.setAttribute('aria-label', T.clear);
@@ -70,10 +74,10 @@ export function createToolbar(container, settings, actions) {
   const fsBtn = button('btn btn--icon btn--optional', T.tipFullscreen);
   fsBtn.addEventListener('click', () => { actions.toggleFullscreen(); fsBtn.blur(); });
 
-  runBtn.dataset.tour = clearBtn.dataset.tour = 'runclear';   // guided tour targets (tour.js)
+  runBtn.dataset.tour = freezeBtn.dataset.tour = clearBtn.dataset.tour = 'runclear';   // guided tour targets (tour.js)
   settingsBtn.dataset.tour = 'settings';
   presentBtn.dataset.tour = fsBtn.dataset.tour = 'screen';
-  bar.append(countGroup, sep(), runBtn, clearBtn, sep(), settingsBtn, presentBtn, fsBtn);
+  bar.append(countGroup, sep(), runBtn, freezeBtn, clearBtn, sep(), settingsBtn, presentBtn, fsBtn);
   container.append(bar);
 
   function sync(state) {
@@ -82,6 +86,11 @@ export function createToolbar(container, settings, actions) {
     runBtn.setAttribute('aria-pressed', String(running));
     runBtn.innerHTML = running ? `${ICONS.pause}<span class="btn__text">${T.stop}</span>` : `${ICONS.play}<span class="btn__text">${T.run}</span>`;
     runBtn.setAttribute('aria-label', running ? T.stop : T.run);
+    const frozen = !!state.frozen;
+    freezeBtn.setAttribute('aria-pressed', String(frozen));
+    freezeBtn.classList.toggle('btn--accent', frozen);
+    freezeBtn.innerHTML = `${frozen ? ICONS.unfreeze : ICONS.freeze}<span class="btn__text">${frozen ? T.unfreeze : T.freeze}</span>`;
+    freezeBtn.setAttribute('aria-label', frozen ? T.unfreeze : T.freeze);
     settingsBtn.setAttribute('aria-pressed', String(!!state.settingsOpen));
     settingsBtn.classList.toggle('btn--accent', !!state.settingsOpen);
     const fs = !!document.fullscreenElement;

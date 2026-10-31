@@ -34,6 +34,8 @@ export const STR = {
     run: 'Chạy nguồn',
     stop: 'Dừng nguồn',
     clear: 'Xóa sóng',
+    freeze: 'Dừng hình',
+    unfreeze: 'Chạy tiếp',
     settings: 'Cài đặt',
     present: 'Trình chiếu',
     fullscreen: 'Toàn màn hình',
@@ -42,6 +44,7 @@ export const STR = {
     tipCount: 'Số nguồn sóng (phím 1, 2, 3, 4)',
     tipRun: 'Bật / tắt dao động của các quả bóng (phím Space)',
     tipClear: 'Làm phẳng mặt nước, xóa toàn bộ sóng hiện có',
+    tipFreeze: 'Dừng hình: đóng băng toàn bộ mặt nước, kể cả sóng đã phát ra, để quan sát hoặc chụp lại (phím P)',
     tipSettings: 'Mở / đóng bảng cài đặt',
     tipPresent: 'Ẩn giao diện để trình chiếu (phím H, Esc để thoát)',
     tipFullscreen: 'Bật / tắt chế độ toàn màn hình',
@@ -117,7 +120,7 @@ export const STR = {
     showFps: 'Hiện số khung hình/giây (phím F)',
     reset: 'Đặt lại mặc định',
     tipReset: 'Khôi phục mọi cài đặt về giá trị ban đầu.',
-    keys: 'Phím tắt: 1 / 2 / 4 · L bố cục · Space chạy/dừng · M chế độ xem · D di chuyển nguồn · F FPS · H trình chiếu · Esc thoát',
+    keys: 'Phím tắt: 1 / 2 / 4 · L bố cục · Space chạy/dừng · P dừng hình · M chế độ xem · D di chuyển nguồn · F FPS · H trình chiếu · Esc thoát',
   },
 
   tour: {
@@ -128,7 +131,7 @@ export const STR = {
     progress: (n, total) => `${n}/${total}`,
     steps: {
       count: { title: 'Số nguồn', text: 'Chọn 1 đến 4 nguồn sóng. Mỗi nguồn là một quả cầu đỏ dao động trên mặt nước.' },
-      runclear: { title: 'Dừng nguồn và Xóa sóng', text: 'Tạm dừng các nguồn để quan sát, hoặc xóa hết sóng để làm lại từ đầu.' },
+      runclear: { title: 'Dừng nguồn, Dừng hình, Xóa sóng', text: 'Tạm dừng các nguồn, hoặc xóa hết sóng để làm lại từ đầu. Dừng hình giữ nguyên cả mặt nước để quan sát, chụp lại.' },
       settings: { title: 'Cài đặt', text: 'Mở bảng cài đặt: chế độ xem, tần số, pha ban đầu, khoảng cách nguồn...' },
       move: { title: 'Di chuyển nguồn', text: 'Bật lên rồi kéo từng quả cầu để đổi vị trí nguồn.' },
       lines: { title: 'Đường giao thoa', text: 'Hiện đường cực đại (vàng) và cực tiểu (xanh nhạt, nét đứt).' },

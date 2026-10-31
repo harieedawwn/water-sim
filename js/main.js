@@ -134,7 +134,19 @@ function start() {
   };
   hud.paperSheet.addEventListener('pointerup', trayUp);
   hud.paperSheet.addEventListener('pointercancel', trayUp);
-  const ui = { settingsOpen: false, presenting: false };
+  const ui = { settingsOpen: false, presenting: false, frozen: false };
+
+  // Freeze frame: time stops for everything that moves the water (sim, emitters, balls, samples, 2D crests,
+  // line fade-in); rendering, camera, views and UI keep working. Not persisted.
+  function setFrozen(v) {
+    if (ui.frozen === v) return;
+    ui.frozen = v;
+    if (toolbar) toolbar.sync(ui);
+  }
+  const unfreeze = () => setFrozen(false);
+  // Settings that only change how the scene is viewed keep the freeze; any other change unfreezes first.
+  const VIEW_ONLY = new Set(['view', 'cameraPitch', 'showMaxima', 'showMinima', 'show2dTroughs', 'show2dGrid',
+    'quality', 'reflection', 'refraction', 'foam', 'showFps', 'ballColor', 'ballSize', 'moveMode']);
   let panel = null;
   let toolbar = null;
   let tuning = null;
@@ -206,6 +218,7 @@ function start() {
   }
 
   function onChange(key) {
+    if (!VIEW_ONLY.has(key)) unfreeze();
     // Unlinking the frequencies starts every source at the linked value, so nothing jumps.
     if (key === 'perSourceFreq' && settings.perSourceFreq) settings.sourceFreqs.fill(settings.frequency);
     sources.apply(settings);
@@ -224,6 +237,7 @@ function start() {
   }
 
   function resetDefaults() {
+    unfreeze();
     Object.assign(settings, sanitize(null));
     sources.apply(settings);
     balls.radius = BALL_RADIUS * settings.ballSize;
@@ -270,11 +284,14 @@ function start() {
   const setView = (id) => { settings.view = id; onChange('view'); };
   const nextView = () => setView(VIEWS[(VIEWS.indexOf(settings.view) + 1) % VIEWS.length]);
   const toggleMoveMode = () => { settings.moveMode = !settings.moveMode; onChange('moveMode'); };
+  const toggleFreeze = () => setFrozen(!ui.frozen);
   const clearWaves = () => {
+    unfreeze();
     sim.reset();
     sources.restart();
   };
   const resetPositions = () => {
+    unfreeze();
     sources.resetPositions();
     refreshInfo();
   };
@@ -283,6 +300,7 @@ function start() {
   toolbar = createToolbar(bottomSlot, settings, {
     setCount,
     toggleRunning,
+    toggleFreeze,
     clearWaves,
     toggleSettings: () => setSettingsOpen(!ui.settingsOpen),
     togglePresentation: () => setPresenting(!ui.presenting),
@@ -308,6 +326,7 @@ function start() {
   installKeys({
     setCount,
     toggleRunning,
+    toggleFreeze,
     toggleLayout: () => { settings.layout = settings.layout === 'hang' ? 'vuong' : 'hang'; onChange('layout'); },
     nextView,
     toggleMoveMode,
@@ -322,9 +341,13 @@ function start() {
 
   // ---- Pointer: drops, or dragging sources in move mode ----
   pointer = installPointer(canvas, framing, sources, () => ({ is2d: in2d, moveMode: settings.moveMode }), {
-    drop: (x, z) => sources.addDrop(x, z),
+    drop: (x, z) => {
+      unfreeze();
+      sources.addDrop(x, z);
+    },
     moveSource: (i, x, z) => {
       if (!sources.moveTo(i, x, z)) return;
+      unfreeze();
       if (sources.count === 2) {
         // Keep the spacing slider in sync without re-applying the layout.
         const d = Math.round(sources.distance12 * 10) / 10;
@@ -358,9 +381,10 @@ function start() {
   let hudTimer = 0;
   function frame(now) {
     try {
-      const dt = last < 0 ? 0 : Math.min((now - last) / 1000, 0.1);
+      const rdt = last < 0 ? 0 : Math.min((now - last) / 1000, 0.1);   // wall-clock step
+      const dt = ui.frozen ? 0 : rdt;                                    // simulation step
       last = now;
-      pointer.tick(dt);
+      pointer.tick(rdt);
       const emitters = sources.update(dt);
       if (in2d) {
         quality.meter.tick(now / 1000);   // FPS readout only; adaptive quality is for the 3D views
@@ -369,7 +393,7 @@ function start() {
         view2d.draw(framing, sources, lines, settings, pointer.hover);
       } else {
         quality.update(now / 1000);
-        if (blender.update(dt)) applyEnvironment();
+        if (blender.update(rdt)) applyEnvironment();
         sources.afterStep(sim.step(dt, emitters));
         balls.update(sim, sources, pointer.hover);
         paper.update(dt);
@@ -383,7 +407,7 @@ function start() {
         tourPending = false;
         setTimeout(() => tour.autoStart(), 600);
       }
-      hudTimer += dt;
+      hudTimer += rdt;
       if (settings.showFps && hudTimer > 0.5) {
         hudTimer = 0;
         hud.setFps(quality.meter.fps, STR.panel.qualityNames[quality.current.level]);

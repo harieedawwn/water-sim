@@ -261,6 +261,7 @@ export function createSettingsPanel(container, settings, actions) {
   toggle(adv, 'foam', P.foam, null, { disabled: () => qualityState.level === 'low' });
   const lowNote = note(adv, P.lowNote);
   toggle(adv, 'showFps', P.showFps);
+  note(adv, P.keys);
   button(adv, ICONS.reset, P.reset, P.tipReset, () => actions.resetDefaults(), 'btn--warn');
   if (actions.replayTour) button(body, ICONS.play, STR.tour.replay, null, () => actions.replayTour(), 'tour-replay');
 
