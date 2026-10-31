@@ -35,14 +35,29 @@ export const LIMITS = {
 export const SOURCE_COUNTS = [1, 2, 3, 4];
 export const LAYOUTS = ['hang', 'vuong'];
 export const QUALITIES = ['auto', 'low', 'medium', 'high'];
-export const SIM_RESOLUTIONS = [384, 512, 768];
+export const SIM_RESOLUTIONS = [320, 384, 512, 768];
 export const VIEWS = ['lake', 'sea', '2d'];
 
 export const QUALITY_PRESETS = {
   low: { simRes: 384, pixelRatio: 1, refraction: false, foam: false },
   medium: { simRes: 512, pixelRatio: 1.25, refraction: true, foam: true },
   high: { simRes: 768, pixelRatio: 1.5, refraction: true, foam: true },
+  phone: { simRes: 320, pixelRatio: 1, refraction: false, foam: false },   // extra steps below low, phones only
 };
+
+// Phones and tablets: touch-first device with a small screen (or a mobile user agent). They get a lighter
+// quality ladder, no MSAA and a lighter 2D canvas: weaker GPUs, high-DPR screens and thermal throttling.
+export const IS_MOBILE = (() => {
+  try {
+    const ua = navigator.userAgent || '';
+    const coarse = window.matchMedia('(pointer: coarse)').matches;
+    const small = Math.min(window.screen.width, window.screen.height) <= 900;
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (coarse && small)
+      || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua));   // iPadOS reports a desktop UA
+  } catch {
+    return false;
+  }
+})();
 
 export const DEFAULTS = Object.freeze({
   quality: 'auto',

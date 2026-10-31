@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { STR } from './ui/strings.js';
 import { showError, installShaderErrorHook } from './ui/errors.js';
-import { loadSettings, saveSettings, sanitize, BALL_RADIUS, WAVE_SPEED, WORLD_SIZE, LIMITS, VIEWS } from './config.js';
+import { loadSettings, saveSettings, sanitize, BALL_RADIUS, WAVE_SPEED, WORLD_SIZE, LIMITS, VIEWS, IS_MOBILE } from './config.js';
 import { WaterSim } from './water/sim.js';
 import { WaterSurface } from './water/surface.js';
 import { MapBlender } from './maps.js';
@@ -48,7 +48,8 @@ function start() {
 
   const settings = loadSettings();
   const canvas = document.getElementById('scene');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  // No MSAA on phones: the high-DPR screen hides the edges and the lines are antialiased in the shader.
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !IS_MOBILE, powerPreference: 'high-performance' });
   installShaderErrorHook(renderer);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;

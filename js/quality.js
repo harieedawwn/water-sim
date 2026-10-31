@@ -1,5 +1,5 @@
 // Frame-rate meter (2 s rolling window) and adaptive quality controller.
-import { QUALITY_PRESETS } from './config.js';
+import { QUALITY_PRESETS, IS_MOBILE } from './config.js';
 
 const WINDOW = 2;            // s rolling average
 const DOWN_FPS = 50;
@@ -12,10 +12,17 @@ const MAX_SAMPLES = 1024;
 const L = QUALITY_PRESETS.low;
 const M = QUALITY_PRESETS.medium;
 const H = QUALITY_PRESETS.high;
+const P = QUALITY_PRESETS.phone;
 
 // Ordered cheapest -> best. Between presets the pixel ratio changes before the sim resolution,
-// because fill rate usually dominates on integrated GPUs.
+// because fill rate usually dominates on integrated GPUs. Phones get two cheaper steps first.
+const PHONE_STEPS = IS_MOBILE ? [
+  { level: 'low', ...P, pixelRatio: 0.8 },
+  { level: 'low', ...P },
+] : [];
+const O = PHONE_STEPS.length;
 export const QUALITY_STEPS = [
+  ...PHONE_STEPS,
   { level: 'low', ...L },
   { level: 'medium', ...M, pixelRatio: L.pixelRatio },
   { level: 'medium', ...M },
@@ -23,7 +30,12 @@ export const QUALITY_STEPS = [
   { level: 'high', ...H },
 ];
 
-const PRESET_STEP = { low: 0, medium: 2, high: 4 };
+// Desktop: low / medium / high presets, auto starts at medium. Phones: "low" is the phone step, "medium"
+// keeps the CSS pixel ratio, auto starts at the phone step and never climbs above medium at pixel ratio 1
+// (keeps the frame rate steady and the phone cool).
+const PRESET_STEP = IS_MOBILE ? { low: 1, medium: O + 1, high: O + 3 } : { low: 0, medium: 2, high: 4 };
+const AUTO_START = IS_MOBILE ? 1 : 2;
+const AUTO_CEILING = IS_MOBILE ? O + 1 : QUALITY_STEPS.length - 1;
 
 export class FpsMeter {
   constructor() {
@@ -67,8 +79,8 @@ export class QualityController {
     this._apply = apply;
     this._effective = effective;
     this.mode = mode;
-    this.step = PRESET_STEP.medium;
-    this.ceiling = QUALITY_STEPS.length - 1;
+    this.step = AUTO_START;
+    this.ceiling = AUTO_CEILING;
     this._lastChange = -Infinity;
     this._lastUp = -Infinity;
     this._highSince = -1;
@@ -79,8 +91,8 @@ export class QualityController {
 
   setMode(mode, now) {
     this.mode = mode;
-    this.ceiling = QUALITY_STEPS.length - 1;
-    if (mode !== 'auto') this.step = PRESET_STEP[mode];
+    this.ceiling = AUTO_CEILING;
+    this.step = mode === 'auto' ? Math.min(this.step, AUTO_CEILING) : PRESET_STEP[mode];
     this._go(this.step, now);
   }
 
