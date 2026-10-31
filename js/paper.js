@@ -120,25 +120,42 @@ export class Paper extends Sample {
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,   // wins depth ties with the water
     }));
     mesh.renderOrder = 1;
-    super(scene, sim, sources, framing, mesh, { radius: 0.16, floatLift: FLOAT, hitPx: HIT_PX, hitY: 0 });
+    // Light sheet: drag ~3.2/s (terminal ~3 units/s, ~0.5 s from the carry height), flutters sideways while
+    // falling, slaps flat onto the surface with almost no plunge.
+    super(scene, sim, sources, framing, mesh, {
+      radius: 0.16, floatLift: FLOAT, hitPx: HIT_PX, hitY: 0,
+      drag: 3.2, buoyK: 260, buoyC: 32, impactKeep: 0.04, minDip: 0.004,
+    });
+    this._phase = 0;
     this.wet = 0;
   }
 
-  onTake() { this.wet = 0; }
+  onTake() {
+    this.wet = 0;
+    this._phase = Math.random() * 6.28;
+  }
 
-  // Small splash pushed out at the two short edges (not under the sheet).
-  onLand() {
+  // Tiny splash at the two short edges (not under the sheet): a sheet barely disturbs the water.
+  onLand(speed) {
+    const k = Math.min(1, speed / 3) * 0.3;
     const cx = Math.cos(this.yaw) * W * 0.6;
     const sx = Math.sin(this.yaw) * W * 0.6;
-    this.sources.addDrop(this.x + cx, this.z - sx);
-    this.sources.addDrop(this.x - cx, this.z + sx);
+    this.sources.addDrop(this.x + cx, this.z - sx, k);
+    this.sources.addDrop(this.x - cx, this.z + sx, k);
   }
 
   look(dt) {
     const u = this.uniforms;
     let sway = 0;
     if (this.state === 'carry') sway = Math.sin(this.time * 3) * SWAY_CARRY;
-    else if (this.state === 'fall') sway = Math.sin(this.time * 6.1) * SWAY_FALL * Math.min(1, this.lift / 0.3);
+    else if (this.state === 'fall') {
+      // Falling-leaf flutter: the sheet rocks and slides a little from side to side on the way down.
+      const h = Math.min(1, this.lift / 0.3);
+      sway = Math.sin(this.time * 9 + this._phase) * SWAY_FALL * 1.4 * h;
+      const a = 0.05 * Math.sin(this.time * 4.5 + this._phase) * h;
+      this.offX = Math.cos(this.yaw) * a;
+      this.offZ = -Math.sin(this.yaw) * a;
+    }
     // Linear waves move the water up and down, so a floating sheet bobs in place; it follows the surface
     // ever more closely as it soaks.
     else if (this.state === 'float') this.wet = Math.min(1, this.wet + WET_RATE * dt);

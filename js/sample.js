@@ -12,7 +12,9 @@ const SEP_GAP = 0.04;              // world gap kept between a sample and a ball
 const SEP_RATE = 10;               // 1/s, how fast an overlapping sample is pushed clear
 
 export class Sample {
-  // opts: { radius (world, separation circle), floatLift (rest height above the water), hitPx, hitY (grab point height) }
+  // opts: { radius (world, separation circle), floatLift (rest height above the water), hitPx, hitY (grab point height),
+  //         drag (1/s air drag while falling), buoyK (1/s^2) / buoyC (1/s) (buoyancy spring after landing),
+  //         impactKeep (fraction of the impact speed that becomes the plunge), minDip (deepest plunge, world) }
   constructor(scene, sim, sources, framing, mesh, opts) {
     this.sim = sim;
     this.sources = sources;
@@ -23,6 +25,13 @@ export class Sample {
     this.floatLift = opts.floatLift;
     this.hitPx = opts.hitPx;
     this.hitY = opts.hitY;
+    this.drag = opts.drag;
+    this.buoyK = opts.buoyK;
+    this.buoyC = opts.buoyC;
+    this.impactKeep = opts.impactKeep;
+    this.minDip = opts.minDip;
+    this.offX = 0;             // display-only offset (paper flutter while falling)
+    this.offZ = 0;
     mesh.visible = false;
     mesh.frustumCulled = false;
     scene.add(mesh);
@@ -51,7 +60,7 @@ export class Sample {
 
   // Hooks for subclasses.
   onTake() {}
-  onLand() {}
+  onLand(speed) {}   // eslint-disable-line no-unused-vars
   look() {}
 
   // Point under the screen position at the carry height (so the sample stays under the finger) -> out {x, z}.
@@ -74,6 +83,7 @@ export class Sample {
   // Fresh sample from the tray.
   take(px, py) {
     this.on = true;
+    this.offX = this.offZ = 0;
     this.state = 'carry';
     this.lift = LIFT;
     this.vanish = 0;
@@ -153,15 +163,24 @@ export class Sample {
       this.z += (this.tz - this.z) * k;
       this.lift += (LIFT - this.lift) * k;
     } else if (this.state === 'fall') {
-      // Light sample: gravity against strong air drag (terminal speed ~1.6 units/s); nothing pushes it
-      // sideways, so it lands where it was released.
-      this.vel += (-9.8 - 6 * this.vel) * dt;
+      // Gravity against the sample's own air drag.
+      this.vel += (-9.8 - this.drag * this.vel) * dt;
       this.lift += this.vel * dt;
       if (this.lift <= this.floatLift) {
+        // Impact: part of the speed carries the sample below its rest line, buoyancy pushes it back up.
+        const speed = -this.vel;
+        this.x += this.offX;
+        this.z += this.offZ;
+        this.offX = this.offZ = 0;
         this.lift = this.floatLift;
+        this.vel = -speed * this.impactKeep;
         this.state = 'float';
-        this.onLand();
+        this.onLand(speed);
       }
+    } else if (this.state === 'float') {
+      // Damped buoyancy spring around the rest line (semi-implicit Euler, stable for dt <= 0.1).
+      this.vel += (-this.buoyK * (this.lift - this.floatLift) - this.buoyC * this.vel) * dt;
+      this.lift = Math.max(this.floatLift - this.minDip, this.lift + this.vel * dt);
     } else if (this.state === 'vanish') {
       this._vt = Math.min(1, this._vt + rdt / VANISH_S);
       const e = 1 - (1 - this._vt) ** 3;   // ease out
@@ -177,7 +196,7 @@ export class Sample {
     u.uVanish.value = this.vanish;
     u.uSpin.value = this.vanish * VANISH_SPIN;
     this.look(dt);
-    this.mesh.position.set(this.x, 0, this.z);
+    this.mesh.position.set(this.x + this.offX, 0, this.z + this.offZ);
     this.mesh.rotation.y = this.yaw;
     if (done) this.remove();
     return done;
