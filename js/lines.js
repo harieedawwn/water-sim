@@ -136,7 +136,9 @@ export class InterferenceLines {
     const k1 = Math.floor(r - offset + 1e-9);
     let n = 0;
     for (let k = k0; k <= k1 && n < MAX_ORDERS; k++) {
-      delta[n] = Math.max(-this.d, Math.min(this.d, (k + offset) * this.lambda));
+      // |delta| ~ d is the degenerate ray on the S1-S2 axis beyond the sources: not a real curve, skipped.
+      if (Math.abs((k + offset) * this.lambda) > this.d - 0.1 * this.lambda) continue;
+      delta[n] = (k + offset) * this.lambda;
       ks[n] = k;
       n++;
     }

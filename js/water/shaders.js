@@ -350,6 +350,10 @@ void main() {
   // Lines run up to the ball edges and fade out only in a thin band right at the edge.
   vis = clamp(min(uLineReach.x - r1, uLineReach.y - r2) / uLineFade, 0.0, 1.0)
             * smoothstep(0.02, 0.1, min(r1 - uBalls[0].w, r2 - uBalls[1].w));
+  // |r2 - r1| = d only on the S1-S2 axis beyond the sources: a degenerate "line" with no width (the
+  // pattern does not change across it), so it is not drawn.
+  float dAxis = distance(uLineSrc.xy, uLineSrc.zw);
+  vis *= smoothstep(0.05, 0.12, (dAxis - abs(r2 - r1)) / uLineLambda);
   pxMax = abs(fract(lx + 0.5) - 0.5) / lw;     // distance to the line in px
   pxMin = abs(fract(lx) - 0.5) / lw;
   // Dashes of the minima: approximate arc length from the hyperbola vertex,
