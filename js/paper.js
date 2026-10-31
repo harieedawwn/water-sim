@@ -8,6 +8,7 @@ const W = 0.7;              // sheet size (world units)
 const D = 0.5;
 const LIFT = 0.8;           // height while carried
 const FLOAT = 0.004;        // gap above the surface (a sheet floats on the surface film)
+const CLEAR = 0.006;        // the sheet never dips below the water under it by less than this
 const WET_RATE = 0.12;      // wetness gained per second on the water
 const HIT_PX = 60;
 
@@ -20,6 +21,7 @@ uniform float uFlex;            // 0 rigid sheet .. 1 follows the water at every
 uniform float uCurl;            // dry edge curl
 uniform float uSway;            // flutter while falling
 uniform vec2 uHalf;             // half size (local x, z)
+uniform float uClear;           // minimum height above the local water
 varying vec2 vUv;
 varying vec3 vN;
 
@@ -34,7 +36,9 @@ float sheetAt(vec2 p, float hc, vec2 g) {
   vec2 q = p / uHalf;
   float rigid = hc + g.x * p.x + g.y * p.y;                 // plane fitted to the water under the sheet
   float water = mix(rigid, waterAt(vec3(p.x, 0.0, p.y)), uFlex);
-  return water + uLift + uCurl * (q.x * q.x + 0.4 * q.y * q.y) + uSway * q.x;
+  float y = water + uLift + uCurl * (q.x * q.x + 0.4 * q.y * q.y) + uSway * q.x;
+  // Water cannot pass through the sheet: it always rests on top of the local surface.
+  return max(y, waterAt(vec3(p.x, 0.0, p.y)) + uClear);
 }
 
 void main() {
@@ -79,7 +83,7 @@ export class Paper {
     this.sim = sim;
     this.sources = sources;
     this.framing = framing;
-    const geo = new THREE.PlaneGeometry(W, D, 20, 14);
+    const geo = new THREE.PlaneGeometry(W, D, 56, 40);
     geo.rotateX(-Math.PI / 2);
     this.uniforms = {
       uHeight: { value: null },
@@ -90,12 +94,15 @@ export class Paper {
       uCurl: { value: 0.03 },
       uSway: { value: 0 },
       uHalf: { value: new THREE.Vector2(W / 2, D / 2) },
+      uClear: { value: CLEAR },
       uWet: { value: 0 },
       uSun: { value: new THREE.Vector3(0.4, 1, 0.3).normalize() },
     };
     this.mesh = new THREE.Mesh(geo, new THREE.ShaderMaterial({
       uniforms: this.uniforms, vertexShader: VERT, fragmentShader: FRAG, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4,   // wins depth ties with the water
     }));
+    this.mesh.renderOrder = 1;
     this.mesh.visible = false;
     this.mesh.frustumCulled = false;
     scene.add(this.mesh);
@@ -206,7 +213,11 @@ export class Paper {
       if (this.lift <= FLOAT) {
         this.lift = FLOAT;
         this.state = 'float';
-        this.sources.addDrop(this.x, this.z);   // small splash where it lands
+        // Small splash pushed out at the two short edges (not under the sheet).
+        const cx = Math.cos(this.yaw) * W * 0.6;
+        const sx = Math.sin(this.yaw) * W * 0.6;
+        this.sources.addDrop(this.x + cx, this.z - sx);
+        this.sources.addDrop(this.x - cx, this.z + sx);
       }
     } else if (this.state === 'float') {
       // Linear waves move the water up and down (and slightly back and forth around a fixed point),
@@ -217,7 +228,7 @@ export class Paper {
     u.uSway.value = sway;
     u.uWet.value = this.wet;
     u.uCurl.value = 0.03 * (1 - this.wet);
-    u.uFlex.value = this.state === 'float' ? 0.3 + 0.65 * this.wet : 0;
+    u.uFlex.value = this.state === 'float' ? 0.6 + 0.4 * this.wet : 0;
     this.mesh.position.set(this.x, 0, this.z);
     this.mesh.rotation.y = this.yaw;
   }
