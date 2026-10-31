@@ -9,6 +9,8 @@ import { MapBlender } from './maps.js';
 import { SourceManager } from './sources.js';
 import { Balls } from './balls.js';
 import { Paper } from './paper.js';
+import { Duck } from './duck.js';
+import { Samples } from './sample.js';
 import { Framing, CAMERA_FOV } from './framing.js';
 import { InterferenceLines, LINE_COLORS } from './lines.js';
 import { SourceLabels } from './labels.js';
@@ -81,7 +83,8 @@ function start() {
     document.documentElement.style.setProperty('--ball-color', settings.ballColor);
   }
   applyBallColor();
-  const paper = new Paper(scene, sim, sources, framing, canvas);
+  const paper = new Paper(scene, sim, sources, framing);
+  const duck = new Duck(scene, sim, sources, framing, balls.uniforms);
   const lines = new InterferenceLines();
   const uiRoot = document.getElementById('ui');
   const labels = new SourceLabels(uiRoot);
@@ -112,28 +115,26 @@ function start() {
     if (!want2d) blender.setIndex(MAP_OF_VIEW[settings.view]);
     view2d.setVisible(want2d);
     labels.setVisible(!want2d);
-    paper.setShown(!want2d);
-    hud.paperTray.hidden = want2d;
+    samples.setShown(!want2d);
+    hud.sampleTray.hidden = want2d;
     if (pointer) pointer.refresh();
   }
 
   // ---- UI ----
   const hud = createHud(uiRoot);
-  // Paper tray: the drag starts on the sheet in the tray and ends over the water.
-  hud.paperSheet.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || in2d) return;
-    e.preventDefault();
-    hud.paperSheet.setPointerCapture(e.pointerId);
-    paper.takeFromTray(e.clientX, e.clientY);
-    hud.paperTray.classList.add('is-taken');
+  // Samples (paper, duck): picked on the canvas before pointer.js sees the event, dragged from the tray.
+  const samples = new Samples(canvas, sources, [paper, duck], {
+    changed: () => {
+      hud.setTaken('paper', paper.on);
+      hud.setTaken('duck', duck.on);
+    },
+    touched: () => unfreeze(),
+    overBin: () => false,
+    hoverBin: () => {},
+    binPoint: () => false,
   });
-  hud.paperSheet.addEventListener('pointermove', (e) => paper.moveTo(e.clientX, e.clientY));
-  const trayUp = (e) => {
-    paper.release(e.clientX, e.clientY);
-    hud.paperTray.classList.remove('is-taken');
-  };
-  hud.paperSheet.addEventListener('pointerup', trayUp);
-  hud.paperSheet.addEventListener('pointercancel', trayUp);
+  samples.bindTray(hud.thumbs.paper, paper, () => !in2d);
+  samples.bindTray(hud.thumbs.duck, duck, () => !in2d);
   const ui = { settingsOpen: false, presenting: false, frozen: false };
 
   // Freeze frame: time stops for everything that moves the water (sim, emitters, balls, samples, 2D crests,
@@ -396,7 +397,7 @@ function start() {
         if (blender.update(rdt)) applyEnvironment();
         sources.afterStep(sim.step(dt, emitters));
         balls.update(sim, sources, pointer.hover);
-        paper.update(dt);
+        samples.update(dt, rdt, balls);
         surface.update(sim, sim.renderTime, balls);
         lines.update(settings, sources);
         if (linesWanted()) surface.setLines(lines, renderer.getPixelRatio(), framing.scale2d);

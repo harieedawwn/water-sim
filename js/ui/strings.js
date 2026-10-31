@@ -136,7 +136,7 @@ export const STR = {
       move: { title: 'Di chuyển nguồn', text: 'Bật lên rồi kéo từng quả cầu để đổi vị trí nguồn.' },
       lines: { title: 'Đường giao thoa', text: 'Hiện đường cực đại (vàng) và cực tiểu (xanh nhạt, nét đứt).' },
       readout: { title: 'Tần số và bước sóng', text: 'Số liệu này đổi theo tần số bạn chọn.' },
-      tray: { title: 'Mẫu vật', text: 'Giữ tờ giấy, kéo vào mặt nước rồi thả để thấy nó nhấp nhô theo sóng.' },
+      tray: { title: 'Mẫu vật', text: 'Giữ tờ giấy hoặc chú vịt, kéo vào mặt nước rồi thả để thấy nó nhấp nhô theo sóng.' },
       screen: { title: 'Trình chiếu', text: 'Chế độ trình chiếu và toàn màn hình, tiện khi dạy trên máy chiếu.' },
     },
   },
@@ -149,7 +149,9 @@ export const STR = {
   hud: {
     fps: 'FPS',
     paper: 'Mẫu vật',
-    paperHint: 'Nhấn giữ tờ giấy, kéo vào mặt nước rồi thả',
+    paperHint: 'Nhấn giữ mẫu vật, kéo vào mặt nước rồi thả',
+    paperName: 'Tờ giấy',
+    duckName: 'Vịt bồn tắm',
   },
 
   tuning: {

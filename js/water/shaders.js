@@ -85,7 +85,7 @@ void main() {
 // ---------- Shared sky + noise (procedural, no textures) ----------
 // CHEAP_SKY (reflection setting off) drops the cloud noise.
 
-const SKY_GLSL = /* glsl */`
+export const SKY_GLSL = /* glsl */`
 uniform vec3 uSkyZenith;
 uniform vec3 uSkyHorizon;
 uniform vec3 uGlareDir;

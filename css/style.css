@@ -758,25 +758,32 @@ body.presenting #scene { cursor: none !important; }  /* beats the inline cursor 
 .swatch:hover { transform: scale(1.1); }
 .swatch[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 2px var(--c-accent); transform: scale(1.12); }
 
-/* Paper tray (under the readout) */
+/* Sample tray (under the readout): paper and duck thumbnails side by side. */
 .tray { display: flex; align-items: center; gap: var(--s3); pointer-events: auto; max-width: 260px; }
+.tray__items { display: flex; align-items: center; gap: var(--s2); flex: none; }
+.tray__thumb {
+  position: relative; flex: none; cursor: grab; touch-action: none;
+  transition: transform var(--ease), opacity var(--ease);
+}
+.tray__thumb.is-taken { opacity: 0.3; cursor: default; }
 .tray__sheet {
-  position: relative; flex: none; width: 46px; height: 60px; cursor: grab; touch-action: none;
+  width: 36px; height: 48px;
   background:
-    linear-gradient(90deg, transparent 8px, rgba(220, 60, 60, 0.7) 8px 9px, transparent 9px),
-    repeating-linear-gradient(180deg, #f3efe4 0 7px, #9cb8dc 7px 8px);
+    linear-gradient(90deg, transparent 7px, rgba(220, 60, 60, 0.7) 7px 8px, transparent 8px),
+    repeating-linear-gradient(180deg, #f3efe4 0 6px, #9cb8dc 6px 7px);
   border-radius: 2px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
   transform: rotate(-4deg);
-  transition: transform var(--ease), opacity var(--ease);
   clip-path: polygon(0 0, 75% 0, 100% 18%, 100% 100%, 0 100%);   /* folded corner */
 }
 .tray__sheet::after {
   content: ''; position: absolute; top: 0; right: 0; width: 25%; height: 18%;
   background: linear-gradient(225deg, transparent 50%, #cfc8b6 50%);
 }
-.tray__sheet:hover { transform: rotate(-2deg) scale(1.06); }
-.tray.is-taken .tray__sheet { opacity: 0.35; cursor: grabbing; }
+.tray__sheet:not(.is-taken):hover { transform: rotate(-2deg) scale(1.06); }
+.tray__duck { width: 46px; height: 42px; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.45)); }
+.tray__duck svg { display: block; width: 100%; height: 100%; }
+.tray__duck:not(.is-taken):hover { transform: rotate(4deg) scale(1.08); }
 .tray__text { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-xs, 12px); color: var(--c-text-dim); }
 .tray__text b { color: var(--c-accent); font-size: var(--fs-s); }
 .tray[hidden] { display: none; }
