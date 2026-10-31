@@ -21,6 +21,7 @@ import { createToolbar } from './ui/toolbar.js';
 import { createSettingsPanel } from './ui/ui.js';
 import { createHud } from './ui/hud.js';
 import { createChrome } from './ui/chrome.js';
+import { createBin } from './ui/bin.js';
 import { createTuningPanel } from './ui/tuning.js';
 import { installKeys } from './ui/keys.js';
 import { createTour } from './ui/tour.js';
@@ -127,12 +128,15 @@ function start() {
     changed: () => {
       hud.setTaken('paper', paper.on);
       hud.setTaken('duck', duck.on);
+      if (bin) bin.setCount(samples.countOnWater);
     },
     touched: () => unfreeze(),
-    overBin: () => false,
-    hoverBin: () => {},
-    binPoint: () => false,
+    overBin: (x, y) => !!bin && bin.contains(x, y),
+    hoverBin: (on) => { if (bin) bin.setHover(on); },
+    binPoint: (out) => !!bin && bin.centre(out),
+    discarded: () => { if (bin) bin.swallow(); },
   });
+  let bin = null;
   samples.bindTray(hud.thumbs.paper, paper, () => !in2d);
   samples.bindTray(hud.thumbs.duck, duck, () => !in2d);
   const ui = { settingsOpen: false, presenting: false, frozen: false };
@@ -297,8 +301,9 @@ function start() {
     refreshInfo();
   };
 
-  const bottomSlot = createChrome(uiRoot);
-  toolbar = createToolbar(bottomSlot, settings, {
+  const { toolbarSlot, cornerSlot } = createChrome(uiRoot);
+  bin = createBin(cornerSlot, () => samples.removeAll());
+  toolbar = createToolbar(toolbarSlot, settings, {
     setCount,
     toggleRunning,
     toggleFreeze,

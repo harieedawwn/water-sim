@@ -154,6 +154,10 @@ export const STR = {
     duckName: 'Vịt bồn tắm',
   },
 
+  bin: {
+    label: 'Xóa mẫu vật',
+  },
+
   tuning: {
     title: 'Tinh chỉnh hình ảnh',
     normalStrength: 'Độ nổi pháp tuyến',

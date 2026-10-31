@@ -186,7 +186,8 @@ export class Sample {
 
 // The set of samples: pointer picking on the canvas (install BEFORE pointer.js so grabbing a sample stops
 // the drop / drag handlers), tray drags, separation, removal. hooks: { changed(), touched() (a sample was
-// taken or released: unfreeze), overBin(px, py), hoverBin(on), binPoint(out) -> bool (bin centre, CSS px) }.
+// taken or released: unfreeze), overBin(px, py), hoverBin(on), binPoint(out) -> bool (bin centre, CSS px),
+// discarded() (samples are going into the bin) }.
 export class Samples {
   constructor(canvas, sources, list, hooks) {
     this.sources = sources;
@@ -262,6 +263,7 @@ export class Samples {
     this.hooks.hoverBin(false);
     if (this.hooks.overBin(px, py)) {
       this._discard(s);
+      this.hooks.discarded();
     } else {
       s.release(px, py);
       this.hooks.touched();
@@ -272,6 +274,7 @@ export class Samples {
   // Bin: every sample on the water flies into it (instant when hidden or with reduced motion).
   removeAll() {
     for (const s of this.list) if (s.onWater) this._discard(s);
+    this.hooks.discarded();
     this.hooks.changed();
   }
 
