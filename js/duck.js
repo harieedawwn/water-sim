@@ -28,6 +28,7 @@ uniform float uFloat;           // 0 carried .. 1 floating: how much the hull ti
 uniform vec2 uFoot;             // half spans of the slope samples (local x, z)
 uniform float uVanish;          // 0..1 removal: shrink
 uniform float uSpin;            // removal spin (rad)
+uniform float uRock;            // extra pitch after an impact (rad)
 attribute vec3 aCol;
 varying vec3 vCol;
 varying vec3 vN;
@@ -47,7 +48,7 @@ void main() {
   float hzp = waterAt(vec2(0.0, uFoot.y));
   float hzn = waterAt(vec2(0.0, -uFoot.y));
   float heave = 0.4 * hc + 0.15 * (hxp + hxn + hzp + hzn);
-  float ax = clamp(atan(${TILT_GAIN.toFixed(2)} * (hxp - hxn) / (2.0 * uFoot.x)), -${TILT_MAX.toFixed(2)}, ${TILT_MAX.toFixed(2)}) * uFloat;
+  float ax = uRock + clamp(atan(${TILT_GAIN.toFixed(2)} * (hxp - hxn) / (2.0 * uFoot.x)), -${TILT_MAX.toFixed(2)}, ${TILT_MAX.toFixed(2)}) * uFloat;
   float az = -clamp(atan(${TILT_GAIN.toFixed(2)} * (hzp - hzn) / (2.0 * uFoot.y)), -${TILT_MAX.toFixed(2)}, ${TILT_MAX.toFixed(2)}) * uFloat;
   mat3 pitch = mat3(cos(ax), sin(ax), 0.0, -sin(ax), cos(ax), 0.0, 0.0, 0.0, 1.0);   // about z: +x rises with the slope
   mat3 roll = mat3(1.0, 0.0, 0.0, 0.0, cos(az), sin(az), 0.0, -sin(az), cos(az));    // about x
@@ -150,7 +151,7 @@ function mergeParts(parts) {
   return geo;
 }
 
-// Local frame: +x forward (beak), +y up, origin at the waterline; ~0.83 long, 37 % of the body below y = 0.
+// Local frame: +x forward (beak), +y up, origin at the waterline; ~0.83 long.
 function buildDuck() {
   const parts = [];
   const m = () => new THREE.Matrix4();
@@ -175,7 +176,9 @@ function buildDuck() {
   }
   add(sphere(18, 10), BEAK, 0.335, 0.295, 0, 0.09, 0.032, 0.075);                    // upper beak
   add(sphere(16, 8), BEAK_LOW, 0.32, 0.262, 0, 0.07, 0.022, 0.058);                  // lower beak
-  return mergeParts(parts);
+  const geo = mergeParts(parts);
+  geo.translate(0, 0.045, 0);   // rides high like a real bath duck: ~25 % of the body below the waterline
+  return geo;
 }
 
 export class Duck extends Sample {
@@ -191,21 +194,36 @@ export class Duck extends Sample {
       uFoot: { value: new THREE.Vector2(FOOT[0], FOOT[1]) },
       uVanish: { value: 0 },
       uSpin: { value: 0 },
+      uRock: { value: 0 },
     };
     const mesh = new THREE.Mesh(buildDuck(), new THREE.ShaderMaterial({
       uniforms, vertexShader: VERT, fragmentShader: FRAG,
     }));
-    super(scene, sim, sources, framing, mesh, { radius: 0.33, floatLift: 0, hitPx: HIT_PX, hitY: 0.15 });
+    // Compact plastic body: little air drag (hits the water at ~3.5 units/s), plunges, bobs back up on a
+    // buoyancy spring (~1.6 Hz, settles in ~1 s) and rocks nose-down / nose-up.
+    super(scene, sim, sources, framing, mesh, {
+      radius: 0.33, floatLift: 0, hitPx: HIT_PX, hitY: 0.2,
+      drag: 1.2, buoyK: 100, buoyC: 6.5, impactKeep: 0.3, minDip: 0.12,
+    });
     this._float = 0;
+    this._rock = 0;
+    this._rockVel = 0;
   }
 
-  // Small splash on both sides of the hull (not under it).
-  onLand() {
+  // Splash on both sides of the hull (not under it), as strong as the impact; the hull starts to rock.
+  onLand(speed) {
+    const k = Math.min(1, speed / 3.5) * 0.6;
     const c = Math.cos(this.yaw);
     const s = Math.sin(this.yaw);
     const side = 0.36;
-    this.sources.addDrop(this.x + s * side, this.z + c * side);
-    this.sources.addDrop(this.x - s * side, this.z - c * side);
+    this.sources.addDrop(this.x + s * side, this.z + c * side, k);
+    this.sources.addDrop(this.x - s * side, this.z - c * side, k);
+    this._rockVel = -1.6 * Math.min(1, speed / 3.5);   // nose dips first
+  }
+
+  onTake() {
+    this._rock = 0;
+    this._rockVel = 0;
   }
 
   look(dt) {
@@ -213,5 +231,9 @@ export class Duck extends Sample {
     const target = this.state === 'float' ? 1 : 0;
     this._float += (target - this._float) * Math.min(1, dt * 4);
     this.uniforms.uFloat.value = this._float;
+    // Rocking after the impact: damped spring on the pitch (~1.3 Hz).
+    this._rockVel += (-70 * this._rock - 5 * this._rockVel) * dt;
+    this._rock = Math.max(-0.3, Math.min(0.3, this._rock + this._rockVel * dt));
+    this.uniforms.uRock.value = this._rock;
   }
 }

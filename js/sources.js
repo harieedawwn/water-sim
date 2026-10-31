@@ -250,11 +250,13 @@ export class SourceManager {
     return Math.sin(TWO_PI * this.freqs[i] * t + this.phaseOf(i)) * this.gain;
   }
 
-  addDrop(x, z) {
+  // scale: drop strength (1 = a mouse drop); samples splash with a strength that follows the impact.
+  addDrop(x, z, scale = 1) {
     if (this._dropCount >= MAX_DROPS) return;
     const d = this._drops[this._dropCount++];
     d.x = x;
     d.z = z;
+    d.amp = DROP_AMP * scale;
   }
 
   // Advance ramps / smoothing and build the emitter list for this frame (reuses objects; no allocations).
