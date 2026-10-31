@@ -60,6 +60,7 @@ export function createHud(container) {
   // Sample tray: press a thumbnail and drag the sample onto the water (sample.js bindTray).
   const tray = el('div', 'hud__card tray plate');
   tray.dataset.tour = 'tray';
+  tray.title = STR.hud.paperHint;   // compact card: the how-to stays in the tooltip (and the tour)
   const items = el('div', 'tray__items');
   const thumb = (cls, name) => {
     const t = el('div', `tray__thumb ${cls}`);
@@ -72,9 +73,7 @@ export function createHud(container) {
   const sheet = thumb('tray__sheet', STR.hud.paperName);
   const duck = thumb('tray__duck', STR.hud.duckName);
   duck.innerHTML = DUCK_SVG;
-  const trayText = el('div', 'tray__text');
-  trayText.append(el('b', null, STR.hud.paper), el('span', null, STR.hud.paperHint));
-  tray.append(items, trayText);
+  tray.append(el('div', 'tray__text', STR.hud.paper), items);
 
   hud.append(card, tray, fpsCard);
   container.append(hud);
