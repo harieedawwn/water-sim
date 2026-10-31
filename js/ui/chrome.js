@@ -1,4 +1,4 @@
-// Fixed page chrome: the title plate (top, left of centre), the school name (top right) and the bottom row. The bottom row is a three-column
+// Fixed page chrome: the white glass title plate (upper left), the school name (top right) and the bottom row. The bottom row is a three-column
 // grid (free | toolbar | footer), so the footer can never overlap the toolbar at any screen size.
 // Both plates stay visible in presentation mode and fullscreen (see style.css).
 import { STR } from './strings.js';
