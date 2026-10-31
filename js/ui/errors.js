@@ -133,19 +133,37 @@ export function installShaderErrorHook(renderer) {
   };
 }
 
-// Runtime errors and resource load failures (capture phase sees <script> errors too).
+// Runtime errors and resource load failures (capture phase sees <script> errors too). Only errors raised by
+// the app's own files are shown: in-app browsers (Zalo, Facebook, ...) inject their own scripts into the page,
+// and their errors (e.g. "Can't find variable: zaloJSV2") must not cover the simulator. Those go to the console.
+const APP_ROOT = new URL('../../', import.meta.url).href;   // .../water-sim/
+const OWN = [`${APP_ROOT}js/`, `${APP_ROOT}vendor/`];
+const isOwn = (text) => !!text && OWN.some((prefix) => String(text).includes(prefix));
+
 window.addEventListener('error', (ev) => {
   if (ev instanceof ErrorEvent) {
+    const stack = ev.error && ev.error.stack;
+    if (!isOwn(ev.filename) && !isOwn(stack)) {
+      console.warn('Ignored error from a script outside the app:', ev.message, ev.filename || '');
+      return;
+    }
     const where = ev.filename ? `\n${ev.filename}:${ev.lineno}:${ev.colno}` : '';
     showError(STR.err.uncaught, `${ev.message}${where}\n${ev.error ? describe(ev.error) : ''}`.trim());
     return;
   }
   const t = ev.target;
   if (t && t !== window && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
-    showError(STR.err.load, t.src || t.href || t.outerHTML, STR.err.loadHint);
+    const src = t.src || t.href || '';
+    if (!src.startsWith(APP_ROOT)) return;   // a resource injected by the host browser
+    showError(STR.err.load, src || t.outerHTML, STR.err.loadHint);
   }
 }, true);
 
 window.addEventListener('unhandledrejection', (ev) => {
-  showError(STR.err.promise, describe(ev.reason));
+  const r = ev.reason;
+  if (!isOwn(r && r.stack)) {
+    console.warn('Ignored unhandled rejection from outside the app:', r);
+    return;
+  }
+  showError(STR.err.promise, describe(r));
 });
