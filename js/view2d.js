@@ -2,7 +2,7 @@
 // crests already emitted are circles r = v (t - t_n), t_n = (n + 1/4 - phi / 2 pi) / f, between the
 // source's emission start and stop; troughs are the half-period circles. Same v, f, phase, positions
 // and clock as the sim. Optional grid, interference lines (lines.js), S1-S2 line, source markers.
-import { WAVE_SPEED, BALL_HEX, MAX_SOURCES } from './config.js';
+import { WAVE_SPEED, BALL_HEX, MAX_SOURCES, IS_MOBILE } from './config.js';
 import { STR } from './ui/strings.js';
 import { LINE_COLORS, MULTI_LEVELS } from './lines.js';
 
@@ -16,9 +16,9 @@ const CURVE_SAMPLES = 128;
 const MARKER_R = 7;                             // source marker radius, CSS px (hovered: +2)
 const LINE_CLEAR_PX = MARKER_R + 4;             // lines end this far from a source centre (just outside the dot)
 const TWO_PI = Math.PI * 2;
-const MAX_DPR = 2;                              // a 3x canvas costs 2.25x the fill for no visible gain on thin lines
+const MAX_DPR = IS_MOBILE ? 1.5 : 2;                              // a 3x canvas costs 2.25x the fill for no visible gain on thin lines
 const RING_STEPS = 96;                          // angular samples used to find the on-screen part of a ring
-const CONTOUR_PX = 5;                           // 3-4 sources: envelope sample spacing (CSS px)
+const CONTOUR_PX = IS_MOBILE ? 6 : 5;                           // 3-4 sources: envelope sample spacing (CSS px)
 const PT_STRIDE = 6;                            // contour polyline points: x, y (CSS px), r_0..r_3 (world distances)
 const FADE_LEVELS = 4;                          // alpha steps of the fading contour segments
 
