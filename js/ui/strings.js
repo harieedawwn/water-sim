@@ -48,10 +48,10 @@ export const STR = {
     presentHint: 'Chế độ trình chiếu – nhấn Esc hoặc H để thoát',
   },
 
-  // Fixed text on the page (title top centre, footer bottom right).
+  // Fixed text on the page (title top, school name top right).
   chrome: {
     title: 'THÍ NGHIỆM MÔ PHỎNG GIAO THOA SÓNG NƯỚC',
-    footer: 'TRƯỜNG THPT TRẦN QUỐC TOẢN, ĐỒNG THÁP',
+    footer: 'TRƯỜNG THPT TRẦN QUỐC TOẢN (ĐỒNG THÁP)',
   },
 
   panel: {
