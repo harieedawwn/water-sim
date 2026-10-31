@@ -48,3 +48,4 @@ readout shows only f and lambda (one pair, or one line per source when frequenci
 Not run: phone landscape, real touch drag, tuning panel / error overlay visual check, projector contrast.
 Next: done
 P7 [x] glass title (left of centre) + school name top right above the HUD; paper sample 0.41x; envelope-contour lines for 3-4 equal-frequency sources (3D shader + cached 2D marching squares); first-visit guided tour (js/ui/tour.js, key ripple.tour.v1).
+P8 [x] white glass title lower-left (school text above it in every layout), HUD/tray lower, compact 2-item tray; default layouts shifted 5% left; interference lines reach the balls/markers (chained 2D contours); Dừng hình freeze (key P); rubber duck sample on a shared Sample base (js/sample.js, js/duck.js); trash bin (js/ui/bin.js). Checked: node --check, headless loads 1920x1080 / 800x450 / 390x844, freeze frames identical. Not run: real GPU frame rate, touch drag, bin animation at full fps.
