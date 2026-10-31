@@ -211,6 +211,9 @@ uniform float uLinePx;          // half line width, framebuffer px
 uniform float uLineDash;        // dash period of the minima, world units
 uniform vec3 uLineMaxColor;     // display (sRGB) colours, mixed after tone mapping
 uniform vec3 uLineMinColor;
+uniform int uLineMCount;        // 3 or 4: multi-source envelope contours (0 = two-source path)
+uniform vec4 uLineM[4];         // xy = position (x, z), z = phase relative to S1, w = stable radius
+uniform vec4 uLineLevels;       // x = maxima level, y = minima level, z = r_min, w = dashes per turn
 #endif
 
 varying vec3 vWorld;
@@ -311,16 +314,43 @@ void main() {
   #include <colorspace_fragment>
 
 #ifdef LINES
+  float vis, pxMax, pxMin, dash;
+  if (uLineMCount >= 3) {
+    // 3-4 sources: contours of n = |sum w_i e^{j(phi_i - k r_i)}| / sum w_i, w_i = 1 / sqrt(max(r_i, r_min)).
+    vec2 sum = vec2(0.0);
+    float wsum = 0.0;
+    float gap = 1e9;
+    float near = 1e9;
+    float kw = 6.2831853 / uLineLambda;
+    for (int i = 0; i < 4; i++) {
+      if (i >= uLineMCount) break;
+      vec4 q = uLineM[i];
+      float r = distance(vWorld.xz, q.xy);
+      float w = inversesqrt(max(r, uLineLevels.z));
+      float th = q.z - kw * r;
+      sum += w * vec2(cos(th), sin(th));
+      wsum += w;
+      gap = min(gap, q.w - r);
+      near = min(near, r);
+    }
+    float nv = length(sum) / wsum;
+    float nw = max(fwidth(nv), 1e-6);
+    vis = clamp(gap / uLineFade, 0.0, 1.0) * smoothstep(0.5, 0.65, near);
+    pxMax = abs(nv - uLineLevels.x) / nw;
+    pxMin = abs(nv - uLineLevels.y) / nw;
+    // arg(sum) turns once around every node: a few dashes per minima loop.
+    dash = step(fract(atan(sum.y, sum.x) * (uLineLevels.w / 6.2831853)), 0.6);
+  } else {
   // Source i emits sin(w t + phi_i - k r_i). With x = (r2 - r1) / lambda - (phi2 - phi1) / 2 pi,
   // maxima lie on integer x, minima on half-integer x (only |r2 - r1| <= d exists, automatically).
   float r1 = distance(vWorld.xz, uLineSrc.xy);
   float r2 = distance(vWorld.xz, uLineSrc.zw);
   float lx = (r2 - r1) / uLineLambda - uLineCycles;
   float lw = max(fwidth(lx), 1e-6);
-  float vis = clamp(min(uLineReach.x - r1, uLineReach.y - r2) / uLineFade, 0.0, 1.0)
+  vis = clamp(min(uLineReach.x - r1, uLineReach.y - r2) / uLineFade, 0.0, 1.0)
             * smoothstep(0.5, 0.65, min(r1, r2));     // keep clear of the balls
-  float pxMax = abs(fract(lx + 0.5) - 0.5) / lw;     // distance to the line in px
-  float pxMin = abs(fract(lx) - 0.5) / lw;
+  pxMax = abs(fract(lx + 0.5) - 0.5) / lw;     // distance to the line in px
+  pxMin = abs(fract(lx) - 0.5) / lw;
   // Dashes of the minima: approximate arc length from the hyperbola vertex,
   // L = sqrt(b^2 sinh^2 s + a^2 (cosh s - 1)^2) with cosh s = (r1 + r2) / d (exact for a = 0 or b = 0).
   float dd = max(distance(uLineSrc.xy, uLineSrc.zw), 1e-4);
@@ -328,7 +358,8 @@ void main() {
   float ha = 0.5 * abs(r2 - r1);
   float hb2 = max(0.25 * dd * dd - ha * ha, 0.0);
   float arc = sqrt(hb2 * (ch * ch - 1.0) + ha * ha * (ch - 1.0) * (ch - 1.0));
-  float dash = step(fract(arc / uLineDash), 0.6);
+  dash = step(fract(arc / uLineDash), 0.6);
+  }
   float onMax = uLineOn.x * vis;
   float onMin = uLineOn.y * vis * dash;
   // Thin dark casing keeps both colours readable on the dark lake and the bright sea.

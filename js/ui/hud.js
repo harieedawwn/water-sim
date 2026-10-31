@@ -16,6 +16,7 @@ export function createHud(container) {
 
   const card = el('div', 'hud__card plate');
   card.setAttribute('aria-live', 'polite');
+  card.dataset.tour = 'readout';
   // One shared pair (f, lambda) or, when the frequencies differ, one line per source.
   const shared = el('dl', 'kv');
   const fDt = el('dt', null, R.f);
@@ -46,6 +47,7 @@ export function createHud(container) {
 
   // Paper tray: press the sheet and drag it onto the water (wired in main.js).
   const tray = el('div', 'hud__card tray plate');
+  tray.dataset.tour = 'tray';
   tray.title = STR.hud.paperHint;
   const sheet = el('div', 'tray__sheet');
   sheet.setAttribute('role', 'button');

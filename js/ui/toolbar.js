@@ -32,6 +32,7 @@ export function createToolbar(container, settings, actions) {
   seg.classList.add('tip-up');
   seg.setAttribute('role', 'group');
   seg.setAttribute('aria-label', T.count);
+  seg.dataset.tour = 'count';
   const countBtns = [1, 2, 3, 4].map((n) => {
     const b = button('seg__btn');
     b.textContent = String(n);
@@ -69,6 +70,9 @@ export function createToolbar(container, settings, actions) {
   const fsBtn = button('btn btn--icon btn--optional', T.tipFullscreen);
   fsBtn.addEventListener('click', () => { actions.toggleFullscreen(); fsBtn.blur(); });
 
+  runBtn.dataset.tour = clearBtn.dataset.tour = 'runclear';   // guided tour targets (tour.js)
+  settingsBtn.dataset.tour = 'settings';
+  presentBtn.dataset.tour = fsBtn.dataset.tour = 'screen';
   bar.append(countGroup, sep(), runBtn, clearBtn, sep(), settingsBtn, presentBtn, fsBtn);
   container.append(bar);
 

@@ -48,6 +48,15 @@
   /* Vertical offset under the title plate, used when the title spans the full width (compact layouts). */
   --top: calc(var(--sat) + var(--gap));
   --bottom-h: calc(var(--sab) + var(--toolbar-h) + 2 * var(--gap));
+
+  /* Header: title (shifted left), school name top right above the readout. The title font shrinks
+     so the title always ends left of the school name; the panel starts below the title. */
+  --school-fs: clamp(12px, 0.5vw + 8px, 16px);
+  --title-shift: 7vw;
+  --title-fs: min(clamp(20px, 1.1vw + 12px, 38px),
+                  calc((2 * (50vw + var(--title-shift) - 2 * var(--gap) - 25 * var(--school-fs)) - 36px) / 26.5));
+  --title-bottom: calc(var(--sat) + var(--gap) + 1.3 * var(--title-fs) + 2 * var(--s2) + 2px);
+  --hud-top: calc(var(--sat) + var(--gap) + 1.35 * var(--school-fs) + var(--s3));
 }
 
 @media (pointer: coarse), (max-width: 899px) {
@@ -139,19 +148,28 @@ button { font: inherit; color: inherit; }
 .title {
   position: absolute;
   top: calc(var(--sat) + var(--gap));
-  left: 50%;
+  left: calc(50% - var(--title-shift));   /* shifted left of centre (wide screens) */
   transform: translateX(-50%);
   width: max-content;
-  /* Never reaches the side panel (left) or the readout (right). */
-  max-width: min(720px, calc(100vw - 2 * (var(--panel-w) + 2 * var(--gap))));
   margin: 0;
   padding: var(--s2) var(--s4);
   text-align: center;
-  font-size: clamp(18px, 0.8vw + 12px, 28px);
+  font-size: var(--title-fs);
   font-weight: 800;
   line-height: 1.3;
   letter-spacing: 0.04em;
+  white-space: nowrap;                    /* never wraps: the font shrinks instead */
   pointer-events: none;
+}
+/* Bright sea-blue frosted glass, title only (other plates stay flat). */
+.title--glass {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(56, 163, 255, 0.42), rgba(20, 110, 230, 0.34));
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 22px rgba(20, 110, 230, 0.35);
+  text-shadow: 0 1px 2px rgba(0, 20, 60, 0.45);
 }
 
 .bottom {
@@ -275,7 +293,7 @@ button { font: inherit; color: inherit; }
 .panel {
   position: absolute;
   left: calc(var(--sal) + var(--gap));
-  top: calc(var(--sat) + var(--gap) + 30px);
+  top: calc(var(--title-bottom) + var(--s2));
   bottom: var(--bottom-h);
   width: var(--panel-w);
   display: flex;
@@ -495,7 +513,7 @@ button { font: inherit; color: inherit; }
 /* ---------- Readout (right side) ---------- */
 .hud {
   position: absolute;
-  top: calc(var(--sat) + var(--gap));
+  top: var(--hud-top);
   right: calc(var(--sar) + var(--gap));
   display: flex;
   flex-direction: column;
@@ -606,23 +624,21 @@ body.presenting #scene { cursor: none !important; }  /* beats the inline cursor 
 
 /* ---------- Compact layouts: title spans the width, panels sit below it ---------- */
 @media (max-width: 1099px), (max-height: 499px) {
-  :root { --top: calc(var(--sat) + 90px); }
+  :root { --top: calc(var(--sat) + 90px); --title-shift: 0px; --hud-top: var(--top); }
   .title {
     top: calc(var(--sat) + var(--s2));
-    max-width: calc(100vw - 2 * var(--gap) - var(--sal) - var(--sar));
     padding: var(--s1) var(--s3);
-    font-size: 15px;
+    font-size: clamp(10px, 3.3vw, 15px);
     letter-spacing: 0.02em;
   }
   .panel { top: var(--top); width: min(var(--panel-w), calc(100vw - 2 * var(--gap))); }
-  .hud { top: var(--top); }
   .present-hint { top: var(--top); }
 }
 
 /* Phone landscape: short screen, one-line title. */
 @media (max-height: 499px) {
-  :root { --top: calc(var(--sat) + 44px); --gap: var(--s2); --toolbar-h: 48px; }
-  .title { font-size: 14px; }
+  :root { --top: calc(var(--sat) + 64px); --gap: var(--s2); --toolbar-h: 48px; }
+  .title { font-size: clamp(10px, 3.3vw, 14px); }
   .panel { width: min(var(--panel-w), 46vw); }
   .hud__card { padding: var(--s2) var(--s3); font-size: var(--fs-xs); }
 }
@@ -702,22 +718,24 @@ body.presenting #scene { cursor: none !important; }  /* beats the inline cursor 
 }
 .boot-fail[hidden] { display: none; }
 
-/* School name: top left, plain red text (no plate). */
+/* School name: top right, right-aligned, directly above the readout. Plain red text (no plate). */
 .school {
   position: absolute;
   top: calc(var(--sat) + var(--gap));
-  left: calc(var(--sal) + var(--gap));
+  right: calc(var(--sar) + var(--gap));
   margin: 0;
   color: #ff2a2a;
-  font-size: clamp(12px, 0.5vw + 8px, 16px);
+  font-size: var(--school-fs);
   font-weight: 800;
+  line-height: 1.3;
   letter-spacing: 0.03em;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  text-align: right;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55), 0 0 8px rgba(0, 0, 0, 0.25);
   pointer-events: none;
 }
 @media (max-width: 1099px), (max-height: 499px) {
-  .school { position: absolute; top: calc(var(--sat) + 4px); font-size: 11px; }
-  .title { top: calc(var(--sat) + 26px); }
+  .school { top: calc(var(--top) - 24px); font-size: 11px; }
 }
 /* Settings label glows green. */
 /* Settings panel heading glows amber. */
@@ -755,3 +773,82 @@ body.presenting #scene { cursor: none !important; }  /* beats the inline cursor 
 .tray__text { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-xs, 12px); color: var(--c-text-dim); }
 .tray__text b { color: var(--c-accent); font-size: var(--fs-s); }
 .tray[hidden] { display: none; }
+
+/* ---------- Guided tour (js/ui/tour.js) ---------- */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;            /* above the panel, the title and the error overlay */
+  cursor: pointer;
+  --tour-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.tour[hidden] { display: none; }
+.tour__hole {
+  position: absolute;
+  border-radius: 12px;
+  box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.55);   /* the dim layer, with this box cut out */
+  pointer-events: none;
+  transition: left 700ms var(--tour-ease), top 700ms var(--tour-ease), width 700ms var(--tour-ease),
+    height 700ms var(--tour-ease), border-radius 700ms var(--tour-ease);
+}
+.tour__hole::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 2px solid var(--c-accent);
+  border-radius: inherit;
+  animation: tour-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tour-pulse {
+  0%, 100% { opacity: 0.95; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(1.03); }
+}
+.tour__card {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  width: min(320px, calc(100vw - 16px));
+  padding: var(--s3) var(--s4);
+  background: var(--c-plate-solid);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-l);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  cursor: default;
+  transition: left 250ms ease, top 250ms ease, opacity 250ms ease;
+}
+.tour__card.is-hidden { opacity: 0; transition-duration: 140ms; }
+.tour__title { margin: 0 0 var(--s1); font-size: var(--fs-l); font-weight: 700; color: var(--c-accent); }
+.tour__text { margin: 0 0 var(--s3); font-size: var(--fs-s); line-height: 1.45; }
+.tour__foot { display: flex; align-items: center; gap: var(--s2); }
+.tour__count { margin-right: auto; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--c-text-dim); }
+.tour__arrow {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: var(--c-plate-solid);
+  border: 1px solid var(--c-line);
+  animation: tour-bob 1.4s ease-in-out infinite;
+}
+@keyframes tour-bob { 50% { translate: var(--bx, 0) var(--by, 0); } }
+.tour__card[data-side="top"] .tour__arrow {
+  left: var(--at); top: calc(100% - 7px); transform: translateX(-50%) rotate(45deg);
+  border-width: 0 1px 1px 0; --by: 4px;
+}
+.tour__card[data-side="bottom"] .tour__arrow {
+  left: var(--at); top: -8px; transform: translateX(-50%) rotate(45deg);
+  border-width: 1px 0 0 1px; --by: -4px;
+}
+.tour__card[data-side="left"] .tour__arrow {
+  top: var(--at); left: calc(100% - 7px); transform: translateY(-50%) rotate(45deg);
+  border-width: 1px 1px 0 0; --bx: 4px;
+}
+.tour__card[data-side="right"] .tour__arrow {
+  top: var(--at); left: -8px; transform: translateY(-50%) rotate(45deg);
+  border-width: 0 0 1px 1px; --bx: -4px;
+}
+.tour--still .tour__hole, .tour--still .tour__card { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .tour__hole, .tour__card { transition: none; }
+  .tour__hole::after, .tour__arrow { animation: none; }
+}
+.tour-replay { margin-top: var(--s3); }

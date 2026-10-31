@@ -1,5 +1,5 @@
 # Ripple Tank 3D (self-running water interference simulator) - worker rules
-Static web app, no build, no server code, no camera, no hand tracking. Final output = this folder, uploaded to GitHub Pages / Netlify. There is no git: back up the folder (sibling <project>-backup-N) before a stage instead of committing.
+Static web app, no build, no server code, no camera, no hand tracking. Final output = this folder, uploaded to GitHub Pages / Netlify. Git is used: work on a feature branch, one commit per task, never commit to the Pages branch.
 Source of truth: SPEC.md (design + contracts). Progress: PLAN.md. Reference look: ref/ref.png.
 
 ## Run / test
@@ -15,7 +15,7 @@ Source of truth: SPEC.md (design + contracts). Progress: PLAN.md. Reference look
 
 ## Working rules (apply to every task)
 - Write files in priority order: core first, polish last, optional items last. Save each file fully to disk before starting the next. The app must load without errors after each milestone, even if later features are stubbed.
-- No commits (no git). Tick PLAN.md after each stage. If budget runs out, the files on disk are the deliverable.
+- Commit per task on the working branch. Tick PLAN.md after each stage. If budget runs out, the files on disk are the deliverable.
 - Never print whole files to the console; read only the parts you need; do not re-read large files.
 - Do not add features, files, tests or docs that were not asked for; mention good ideas in one line.
 - Confirm before destructive steps (deleting files, overwriting user data).

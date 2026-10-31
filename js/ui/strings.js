@@ -48,10 +48,10 @@ export const STR = {
     presentHint: 'Chế độ trình chiếu – nhấn Esc hoặc H để thoát',
   },
 
-  // Fixed text on the page (title top centre, footer bottom right).
+  // Fixed text on the page (title top, school name top right).
   chrome: {
     title: 'THÍ NGHIỆM MÔ PHỎNG GIAO THOA SÓNG NƯỚC',
-    footer: 'TRƯỜNG THPT TRẦN QUỐC TOẢN, ĐỒNG THÁP',
+    footer: 'TRƯỜNG THPT TRẦN QUỐC TOẢN (ĐỒNG THÁP)',
   },
 
   panel: {
@@ -83,7 +83,7 @@ export const STR = {
     linesHint: 'Chỉ vẽ khi hình giao thoa đã ổn định.',
     legendSolid: 'nét liền',
     legendDashed: 'nét đứt',
-    linesNeed: 'Cần đúng 2 nguồn cùng tần số',
+    linesNeed: 'Cần ít nhất 2 nguồn cùng tần số',
 
     phaseOf: (i) => `Pha ban đầu của S${'₁₂₃₄'[i]}`,
     phaseHint: 'Pha ban đầu quyết định thời điểm nguồn bắt đầu dao động; nguồn cùng pha khi các giá trị bằng nhau.',
@@ -118,6 +118,24 @@ export const STR = {
     reset: 'Đặt lại mặc định',
     tipReset: 'Khôi phục mọi cài đặt về giá trị ban đầu.',
     keys: 'Phím tắt: 1 / 2 / 4 · L bố cục · Space chạy/dừng · M chế độ xem · D di chuyển nguồn · F FPS · H trình chiếu · Esc thoát',
+  },
+
+  tour: {
+    skip: 'Bỏ qua',
+    next: 'Tiếp tục',
+    done: 'Hoàn tất',
+    replay: 'Xem lại hướng dẫn',
+    progress: (n, total) => `${n}/${total}`,
+    steps: {
+      count: { title: 'Số nguồn', text: 'Chọn 1 đến 4 nguồn sóng. Mỗi nguồn là một quả cầu đỏ dao động trên mặt nước.' },
+      runclear: { title: 'Dừng nguồn và Xóa sóng', text: 'Tạm dừng các nguồn để quan sát, hoặc xóa hết sóng để làm lại từ đầu.' },
+      settings: { title: 'Cài đặt', text: 'Mở bảng cài đặt: chế độ xem, tần số, pha ban đầu, khoảng cách nguồn...' },
+      move: { title: 'Di chuyển nguồn', text: 'Bật lên rồi kéo từng quả cầu để đổi vị trí nguồn.' },
+      lines: { title: 'Đường giao thoa', text: 'Hiện đường cực đại (vàng) và cực tiểu (xanh nhạt, nét đứt).' },
+      readout: { title: 'Tần số và bước sóng', text: 'Số liệu này đổi theo tần số bạn chọn.' },
+      tray: { title: 'Mẫu vật', text: 'Giữ tờ giấy, kéo vào mặt nước rồi thả để thấy nó nhấp nhô theo sóng.' },
+      screen: { title: 'Trình chiếu', text: 'Chế độ trình chiếu và toàn màn hình, tiện khi dạy trên máy chiếu.' },
+    },
   },
 
   readout: {

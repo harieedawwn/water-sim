@@ -4,7 +4,7 @@
 // and clock as the sim. Optional grid, interference lines (lines.js), S1-S2 line, source markers.
 import { WAVE_SPEED, BALL_HEX, MAX_SOURCES } from './config.js';
 import { STR } from './ui/strings.js';
-import { LINE_COLORS } from './lines.js';
+import { LINE_COLORS, MULTI_LEVELS, MULTI_DASHES } from './lines.js';
 
 const BG = '#0A0D11';
 const GRID = 'rgba(255, 255, 255, 0.07)';
@@ -17,6 +17,9 @@ const NEAR_SOURCE = 0.6;                        // world units kept clear around
 const TWO_PI = Math.PI * 2;
 const MAX_DPR = 2;                              // a 3x canvas costs 2.25x the fill for no visible gain on thin lines
 const RING_STEPS = 96;                          // angular samples used to find the on-screen part of a ring
+const CONTOUR_PX = 5;                           // 3-4 sources: envelope sample spacing (CSS px)
+const SEG_STRIDE = 8;
+const FADE_LEVELS = 4;                          // alpha steps of the fading contour segments                           // x1, y1, x2, y2, r_0..r_3 (distances at the midpoint)
 
 export class View2D {
   constructor(sceneCanvas) {
@@ -43,6 +46,14 @@ export class View2D {
     }
     this._fontPx = 0;
     this._font = '';
+    // 3-4 sources: contour segments, rebuilt only when the inputs change (see _contours).
+    this._cKey = new Float64Array(17).fill(NaN);
+    this._cGrid = new Float32Array(0);
+    this._cMax = new Float32Array(0);
+    this._cMin = new Float32Array(0);
+    this._cMaxN = 0;
+    this._cMinN = 0;
+    this._env = { n: 0, arg: 0, near: 0 };
   }
 
   get visible() { return !this.canvas.hidden; }
@@ -67,8 +78,14 @@ export class View2D {
     ctx.fillRect(0, 0, W, H);
     if (settings.show2dGrid) this._grid(framing);
     this._waves(framing, sources, settings.show2dTroughs);
-    if (lines.drawMin) this._lines(framing, lines, lines.minDelta, lines.minCount, LINE_COLORS.min, this._dashMin);
-    if (lines.drawMax) this._lines(framing, lines, lines.maxDelta, lines.maxCount, LINE_COLORS.max, this._noDash);
+    if (lines.multi) {
+      if (lines.drawMax || lines.drawMin) this._contours(framing, lines);
+      if (lines.drawMin) this._segments(lines, this._cMin, this._cMinN, LINE_COLORS.min);
+      if (lines.drawMax) this._segments(lines, this._cMax, this._cMaxN, LINE_COLORS.max);
+    } else {
+      if (lines.drawMin) this._lines(framing, lines, lines.minDelta, lines.minCount, LINE_COLORS.min, this._dashMin);
+      if (lines.drawMax) this._lines(framing, lines, lines.maxDelta, lines.maxCount, LINE_COLORS.max, this._noDash);
+    }
     this._ballColor = settings.ballColor || BALL_HEX;
     this._markers(framing, sources, hover);
   }
@@ -245,6 +262,138 @@ export class View2D {
         ctx.lineTo(xs[j], ys[j]);
         ctx.stroke();
       }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // 3-4 sources: marching squares on the envelope n (lines.js) sampled every CONTOUR_PX, for the maxima
+  // and minima levels. Runs only when count / lambda / positions / phases / canvas change; the cached
+  // segments are redrawn every frame.
+  _contours(f, L) {
+    const key = this._cKey;
+    let same = key[0] === L.count && key[1] === L.lambda && key[2] === f.width && key[3] === f.height
+      && key[4] === f.scale2d;
+    for (let i = 0; i < 4; i++) {
+      const on = i < L.count;
+      const x = on ? L.mx[i] : 0;
+      const z = on ? L.mz[i] : 0;
+      const ph = on ? L.mPhase[i] : 0;
+      if (key[5 + i] !== x || key[9 + i] !== z || key[13 + i] !== ph) same = false;
+      key[5 + i] = x; key[9 + i] = z; key[13 + i] = ph;
+    }
+    if (same) return;
+    key[0] = L.count; key[1] = L.lambda; key[2] = f.width; key[3] = f.height; key[4] = f.scale2d;
+
+    const nx = Math.ceil(f.width / CONTOUR_PX) + 1;
+    const ny = Math.ceil(f.height / CONTOUR_PX) + 1;
+    if (this._cGrid.length < nx * ny) this._cGrid = new Float32Array(nx * ny);
+    const g = this._cGrid;
+    const w = this._s;
+    const env = this._env;
+    for (let j = 0; j < ny; j++) {
+      for (let i = 0; i < nx; i++) {
+        f.screenToWorld2d(i * CONTOUR_PX, j * CONTOUR_PX, w);
+        g[j * nx + i] = L.envelope(w.x, w.z, env).n;
+      }
+    }
+    this._cMaxN = this._march(f, L, nx, ny, MULTI_LEVELS.max, false);
+    this._cMinN = this._march(f, L, nx, ny, MULTI_LEVELS.min, true);
+  }
+
+  // Segments of the contour n = level into this._cMax / this._cMin; returns the segment count.
+  // Minima keep only the "on" part of the dash pattern (dashes follow arg(sum), as in the 3D shader).
+  _march(f, L, nx, ny, level, dashed) {
+    const g = this._cGrid;
+    let buf = dashed ? this._cMin : this._cMax;
+    let n = 0;
+    const s = CONTOUR_PX;
+    const pt = this._xs;              // scratch: 4 edge points (x, y) in _xs[0..3], _ys[0..3]
+    const pu = this._ys;
+    const w = this._s;
+    const env = this._env;
+    const edge = (e, i, j, a, b, c, d) => {
+      // e: 0 top (a-b), 1 right (b-c), 2 bottom (d-c), 3 left (a-d)
+      const x0 = i * s;
+      const y0 = j * s;
+      if (e === 0) { pt[0] = x0 + s * (level - a) / (b - a); pu[0] = y0; }
+      else if (e === 1) { pt[1] = x0 + s; pu[1] = y0 + s * (level - b) / (c - b); }
+      else if (e === 2) { pt[2] = x0 + s * (level - d) / (c - d); pu[2] = y0 + s; }
+      else { pt[3] = x0; pu[3] = y0 + s * (level - a) / (d - a); }
+    };
+    const emit = (e0, e1) => {
+      const x1 = pt[e0], y1 = pu[e0], x2 = pt[e1], y2 = pu[e1];
+      f.screenToWorld2d((x1 + x2) / 2, (y1 + y2) / 2, w);
+      L.envelope(w.x, w.z, env);
+      if (env.near < NEAR_SOURCE) return;
+      if (dashed) {
+        let u = (env.arg / TWO_PI) * MULTI_DASHES;
+        u -= Math.floor(u);
+        if (u >= 0.6) return;
+      }
+      if (buf.length < (n + 1) * SEG_STRIDE) {
+        const bigger = new Float32Array(Math.max(1024 * SEG_STRIDE, buf.length * 2));
+        bigger.set(buf);
+        buf = bigger;
+      }
+      const o = n * SEG_STRIDE;
+      buf[o] = x1; buf[o + 1] = y1; buf[o + 2] = x2; buf[o + 3] = y2;
+      for (let k = 0; k < 4; k++) {
+        buf[o + 4 + k] = k < L.count ? Math.hypot(w.x - L.mx[k], w.z - L.mz[k]) : 0;
+      }
+      n++;
+    };
+    for (let j = 0; j < ny - 1; j++) {
+      for (let i = 0; i < nx - 1; i++) {
+        const a = g[j * nx + i];
+        const b = g[j * nx + i + 1];
+        const c = g[(j + 1) * nx + i + 1];
+        const d = g[(j + 1) * nx + i];
+        const idx = (a >= level ? 1 : 0) | (b >= level ? 2 : 0) | (c >= level ? 4 : 0) | (d >= level ? 8 : 0);
+        if (idx === 0 || idx === 15) continue;
+        for (let e = 0; e < 4; e++) edge(e, i, j, a, b, c, d);
+        switch (idx) {
+          case 1: case 14: emit(3, 0); break;
+          case 2: case 13: emit(0, 1); break;
+          case 3: case 12: emit(3, 1); break;
+          case 4: case 11: emit(1, 2); break;
+          case 6: case 9: emit(0, 2); break;
+          case 7: case 8: emit(3, 2); break;
+          case 5: case 10: {
+            // Saddle: the centre value decides which corners are connected.
+            const centreAbove = (a + b + c + d) / 4 >= level;
+            if ((idx === 5) === centreAbove) { emit(0, 1); emit(2, 3); } else { emit(3, 0); emit(1, 2); }
+            break;
+          }
+          default: break;
+        }
+      }
+    }
+    if (dashed) this._cMin = buf; else this._cMax = buf;
+    return n;
+  }
+
+  // Cached contour segments with the grow-outward fade (lines.js visibilityMulti), quantised to a few
+  // alpha levels so a frame costs at most FADE_LEVELS strokes per colour.
+  _segments(L, buf, count, color) {
+    const ctx = this.ctx;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash(this._noDash);
+    for (let lv = 1; lv <= FADE_LEVELS; lv++) {
+      const lo = (lv - 1) / FADE_LEVELS;
+      const hi = lv / FADE_LEVELS;
+      ctx.globalAlpha = hi;
+      ctx.beginPath();
+      let any = false;
+      for (let k = 0; k < count; k++) {
+        const o = k * SEG_STRIDE;
+        const a = L.visibilityMulti(buf, o + 4);
+        if (a <= lo || (a > hi && lv < FADE_LEVELS)) continue;
+        ctx.moveTo(buf[o], buf[o + 1]);
+        ctx.lineTo(buf[o + 2], buf[o + 3]);
+        any = true;
+      }
+      if (any) ctx.stroke();
     }
     ctx.globalAlpha = 1;
   }
