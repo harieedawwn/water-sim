@@ -12,6 +12,7 @@ const AMP_RATE = 4;              // 1/s, smoothing of amplitude changes
 const DROP_RADIUS = 0.14;
 const DROP_AMP = -0.035;         // push the water down
 const FIT_STEPS = 18;
+const LAYOUT_SHIFT_X_FRAC = 0.05;   // default layouts sit left of the screen centre by this much of the visible width
 export const MIN_GAP = LIMITS.spacing.min;   // world units between two sources
 
 export class SourceManager {
@@ -122,20 +123,28 @@ export class SourceManager {
       // "hang" (and "vuong" for 1 or 2): row along x, centred.
       for (let i = 0; i < n; i++) p[i * 2] = (i - (n - 1) / 2) * this.spacing;
     }
-    // Shrink towards the centre until every source is on screen in every view.
+    // Whole layout shifted left of the screen centre; shrink about that shifted centre until every
+    // source is on screen in every view.
+    const f = this.framing;
+    const cx = -LAYOUT_SHIFT_X_FRAC * (f.width / f.scale2d);
     const fits = (k) => {
-      for (let i = 0; i < n; i++) if (!this.framing.inside(p[i * 2] * k, p[i * 2 + 1] * k)) return false;
+      for (let i = 0; i < n; i++) if (!f.inside(cx + p[i * 2] * k, p[i * 2 + 1] * k)) return false;
       return true;
     };
-    if (fits(1)) return;
-    let lo = 0;
-    let hi = 1;
-    for (let i = 0; i < FIT_STEPS; i++) {
-      const mid = (lo + hi) / 2;
-      if (fits(mid)) lo = mid;
-      else hi = mid;
+    let lo = 1;
+    if (!fits(1)) {
+      lo = 0;
+      let hi = 1;
+      for (let i = 0; i < FIT_STEPS; i++) {
+        const mid = (lo + hi) / 2;
+        if (fits(mid)) lo = mid;
+        else hi = mid;
+      }
     }
-    for (let i = 0; i < n * 2; i++) p[i] *= lo;
+    for (let i = 0; i < n; i++) {
+      p[i * 2] = cx + p[i * 2] * lo;
+      p[i * 2 + 1] *= lo;
+    }
   }
 
   // The visible area changed (resize, view angle): refit the layout, or pull dragged sources back on screen.
