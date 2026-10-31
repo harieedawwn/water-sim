@@ -4,13 +4,23 @@
 // rendered water (no clipping through crests) and bobs / bends with it. No GPU readback.
 import * as THREE from 'three';
 
-const W = 0.7;              // sheet size (world units)
-const D = 0.5;
+// Compact sample: 0.41 x the old 0.7 x 0.5 sheet (1/6 of the area). At the default 1920x1080 view
+// (~180 px per world unit at the centre) the long edge is ~52 px, above the ~24 px legibility floor.
+// Every size-dependent constant below (and in the shaders) is scaled with SCALE.
+const SCALE = 0.41;
+const W = 0.7 * SCALE;      // sheet size (world units)
+const D = 0.5 * SCALE;
+const SEG_X = 24;           // vertex spacing ~0.012 units: finer than a sim cell, so crests cannot poke through
+const SEG_Z = 18;
 const LIFT = 0.8;           // height while carried
-const FLOAT = 0.004;        // gap above the surface (a sheet floats on the surface film)
-const CLEAR = 0.006;        // the sheet never dips below the water under it by less than this
+// Gaps scale less than linearly: depth precision does not shrink with the sheet (avoids z-fighting).
+const FLOAT = 0.0025;       // gap above the surface (a sheet floats on the surface film)
+const CLEAR = 0.004;        // the sheet never dips below the water under it by less than this
+const CURL = 0.03 * SCALE;  // dry edge curl
+const SWAY_CARRY = 0.02 * SCALE;
+const SWAY_FALL = 0.06 * SCALE;
 const WET_RATE = 0.12;      // wetness gained per second on the water
-const HIT_PX = 60;
+const HIT_PX = 44;          // grab radius stays larger than the sheet itself (easy to pick up)
 
 const VERT = /* glsl */`
 uniform sampler2D uHeight;
@@ -48,7 +58,7 @@ void main() {
     (waterAt(vec3(uHalf.x, 0.0, 0.0)) - waterAt(vec3(-uHalf.x, 0.0, 0.0))) / (2.0 * uHalf.x),
     (waterAt(vec3(0.0, 0.0, uHalf.y)) - waterAt(vec3(0.0, 0.0, -uHalf.y))) / (2.0 * uHalf.y));
   vec2 p = position.xz;
-  float e = 0.02;
+  float e = 0.008;   // finite-difference step, scaled with the sheet
   float y = sheetAt(p, hc, g);
   float yx = sheetAt(p + vec2(e, 0.0), hc, g);
   float yz = sheetAt(p + vec2(0.0, e), hc, g);
@@ -66,11 +76,14 @@ float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 void main() {
   vec3 n = normalize(vN);
   if (!gl_FrontFacing) n = -n;
-  vec3 col = vec3(0.86, 0.84, 0.78) - hash(floor(vUv * vec2(260.0, 190.0))) * 0.05;   // paper fibres
-  float ruled = (1.0 - smoothstep(0.0, 0.035, abs(fract(vUv.y * 9.0) - 0.5))) * step(vUv.y, 0.9);
-  col = mix(col, vec3(0.35, 0.55, 0.85), ruled * 0.55);
-  float margin = 1.0 - smoothstep(0.0, 0.004, abs(vUv.x - 0.14));
-  col = mix(col, vec3(0.85, 0.2, 0.2), margin * 0.7);
+  // Texture density scaled with the sheet (fewer fibres / ruled lines), widths anti-aliased with fwidth
+  // so the small sheet does not shimmer.
+  vec3 col = vec3(0.86, 0.84, 0.78) - hash(floor(vUv * vec2(56.0, 40.0))) * 0.04;     // paper fibres
+  float ly = vUv.y * 4.0;
+  float ruled = (1.0 - smoothstep(0.0, 0.05 + fwidth(ly), abs(fract(ly) - 0.5))) * step(vUv.y, 0.88);
+  col = mix(col, vec3(0.35, 0.55, 0.85), ruled * 0.5);
+  float margin = 1.0 - smoothstep(0.0, 0.01 + fwidth(vUv.x), abs(vUv.x - 0.14));
+  col = mix(col, vec3(0.85, 0.2, 0.2), margin * 0.65);
   col = mix(col, col * vec3(0.72, 0.76, 0.8), uWet);                                      // wet: darker, greyer
   float diff = 0.45 + 0.55 * max(dot(n, uSun), 0.0);
   gl_FragColor = vec4(col * diff, 1.0);
@@ -83,7 +96,7 @@ export class Paper {
     this.sim = sim;
     this.sources = sources;
     this.framing = framing;
-    const geo = new THREE.PlaneGeometry(W, D, 56, 40);
+    const geo = new THREE.PlaneGeometry(W, D, SEG_X, SEG_Z);
     geo.rotateX(-Math.PI / 2);
     this.uniforms = {
       uHeight: { value: null },
@@ -91,7 +104,7 @@ export class Paper {
       uDisp: { value: 1 },
       uLift: { value: LIFT },
       uFlex: { value: 0.3 },
-      uCurl: { value: 0.03 },
+      uCurl: { value: CURL },
       uSway: { value: 0 },
       uHalf: { value: new THREE.Vector2(W / 2, D / 2) },
       uClear: { value: CLEAR },
@@ -203,13 +216,13 @@ export class Paper {
       this.x += (this.tx - this.x) * k;
       this.z += (this.tz - this.z) * k;
       this.lift += (LIFT - this.lift) * k;
-      sway = Math.sin(this.time * 3) * 0.02;
+      sway = Math.sin(this.time * 3) * SWAY_CARRY;
     } else if (this.state === 'fall') {
       // Light sheet: gravity against strong air drag (terminal speed ~1.6 units/s), flutters but
       // falls straight down: nothing pushes it sideways.
       this.vel += (-9.8 - 6 * this.vel) * dt;
       this.lift += this.vel * dt;
-      sway = Math.sin(this.time * 6.1) * 0.06 * Math.min(1, this.lift / 0.3);
+      sway = Math.sin(this.time * 6.1) * SWAY_FALL * Math.min(1, this.lift / 0.3);
       if (this.lift <= FLOAT) {
         this.lift = FLOAT;
         this.state = 'float';
@@ -227,7 +240,7 @@ export class Paper {
     u.uLift.value = this.lift;
     u.uSway.value = sway;
     u.uWet.value = this.wet;
-    u.uCurl.value = 0.03 * (1 - this.wet);
+    u.uCurl.value = CURL * (1 - this.wet);
     u.uFlex.value = this.state === 'float' ? 0.6 + 0.4 * this.wet : 0;
     this.mesh.position.set(this.x, 0, this.z);
     this.mesh.rotation.y = this.yaw;
