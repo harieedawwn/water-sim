@@ -1,4 +1,4 @@
-// HUD (right side): frequency / wavelength readout and the FPS counter. DOM is written only when values change.
+// HUD (right side): frequency / wavelength readout, the sample tray (paper, duck) and the FPS counter. DOM is written only when values change.
 import { STR, fmt } from './strings.js';
 import { WAVE_SPEED, MAX_SOURCES } from '../config.js';
 
@@ -8,6 +8,18 @@ function el(tag, cls, text) {
   if (text != null) e.textContent = text;
   return e;
 }
+
+// Small side view of a bath duck (tray thumbnail).
+const DUCK_SVG = `<svg viewBox="0 0 48 44" aria-hidden="true">
+<path d="M7 27c-3-6-3-11 1-12 2 3 4 7 6 9z" fill="#ffcf1f"/>
+<ellipse cx="22" cy="30" rx="18" ry="10" fill="#ffcf1f"/>
+<circle cx="31" cy="16" r="10" fill="#ffcf1f"/>
+<path d="M39.5 14.5c4-1.5 7.5-.5 8 1.5-2 2.5-5.5 3-8.5 2.5z" fill="#ff7a12"/>
+<circle cx="34" cy="13" r="1.9" fill="#111"/><circle cx="34.6" cy="12.4" r="0.6" fill="#fff"/>
+<path d="M12 28c5-5 12-5 15 0-5 5-11 5-15 0z" fill="#f2b20c"/>
+<ellipse cx="26" cy="9.5" rx="4" ry="2" fill="#fff" opacity=".45"/>
+<path d="M2 39c5-2 9 2 14 0s9-2 14 0 9 2 14 0" stroke="#7cc8ee" stroke-width="2" fill="none" stroke-linecap="round"/>
+</svg>`;
 
 export function createHud(container) {
   const R = STR.readout;
@@ -45,16 +57,23 @@ export function createHud(container) {
   const fpsLevel = el('span');
   fpsCard.append(document.createTextNode(`${STR.hud.fps} `), fpsValue, fpsLevel);
 
-  // Paper tray: press the sheet and drag it onto the water (wired in main.js).
+  // Sample tray: press a thumbnail and drag the sample onto the water (sample.js bindTray).
   const tray = el('div', 'hud__card tray plate');
   tray.dataset.tour = 'tray';
-  tray.title = STR.hud.paperHint;
-  const sheet = el('div', 'tray__sheet');
-  sheet.setAttribute('role', 'button');
-  sheet.setAttribute('aria-label', STR.hud.paperHint);
-  const trayText = el('div', 'tray__text');
-  trayText.append(el('b', null, STR.hud.paper), el('span', null, STR.hud.paperHint));
-  tray.append(sheet, trayText);
+  tray.title = STR.hud.paperHint;   // compact card: the how-to stays in the tooltip (and the tour)
+  const items = el('div', 'tray__items');
+  const thumb = (cls, name) => {
+    const t = el('div', `tray__thumb ${cls}`);
+    t.setAttribute('role', 'button');
+    t.setAttribute('aria-label', name);
+    t.title = name;
+    items.append(t);
+    return t;
+  };
+  const sheet = thumb('tray__sheet', STR.hud.paperName);
+  const duck = thumb('tray__duck', STR.hud.duckName);
+  duck.innerHTML = DUCK_SVG;
+  tray.append(el('div', 'tray__text', STR.hud.paper), items);
 
   hud.append(card, tray, fpsCard);
   container.append(hud);
@@ -65,8 +84,15 @@ export function createHud(container) {
 
   return {
     element: hud,
-    paperSheet: sheet,
-    paperTray: tray,
+    sampleTray: tray,
+    thumbs: { paper: sheet, duck },
+
+    // A sample in use (on the water or carried) greys out its thumbnail.
+    setTaken(name, taken) {
+      const t = name === 'duck' ? duck : sheet;
+      t.classList.toggle('is-taken', taken);
+      t.setAttribute('aria-disabled', String(taken));
+    },
 
     // r: { count, freqs } (freqs: Hz per source, at least count entries)
     setReadout(r) {

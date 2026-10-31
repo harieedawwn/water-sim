@@ -1,5 +1,5 @@
 // Keyboard shortcuts: 1 2 4 balls, L layout, Space sources, M next view, D move mode, F fps, T tuning,
-// H presentation, Esc leaves presentation / closes the settings panel.
+// P freeze frame, H presentation, Esc leaves presentation / closes the settings panel.
 
 const CODES = {
   Digit1: ['setCount', 1], Numpad1: ['setCount', 1],
@@ -13,6 +13,7 @@ const CODES = {
   KeyF: ['toggleFps'],
   KeyT: ['toggleTuning'],
   KeyH: ['togglePresentation'],
+  KeyP: ['toggleFreeze'],
   Escape: ['escape'],
 };
 

@@ -9,6 +9,8 @@ import { MapBlender } from './maps.js';
 import { SourceManager } from './sources.js';
 import { Balls } from './balls.js';
 import { Paper } from './paper.js';
+import { Duck } from './duck.js';
+import { Samples } from './sample.js';
 import { Framing, CAMERA_FOV } from './framing.js';
 import { InterferenceLines, LINE_COLORS } from './lines.js';
 import { SourceLabels } from './labels.js';
@@ -19,6 +21,7 @@ import { createToolbar } from './ui/toolbar.js';
 import { createSettingsPanel } from './ui/ui.js';
 import { createHud } from './ui/hud.js';
 import { createChrome } from './ui/chrome.js';
+import { createBin } from './ui/bin.js';
 import { createTuningPanel } from './ui/tuning.js';
 import { installKeys } from './ui/keys.js';
 import { createTour } from './ui/tour.js';
@@ -81,7 +84,8 @@ function start() {
     document.documentElement.style.setProperty('--ball-color', settings.ballColor);
   }
   applyBallColor();
-  const paper = new Paper(scene, sim, sources, framing, canvas);
+  const paper = new Paper(scene, sim, sources, framing);
+  const duck = new Duck(scene, sim, sources, framing, balls.uniforms);
   const lines = new InterferenceLines();
   const uiRoot = document.getElementById('ui');
   const labels = new SourceLabels(uiRoot);
@@ -112,29 +116,42 @@ function start() {
     if (!want2d) blender.setIndex(MAP_OF_VIEW[settings.view]);
     view2d.setVisible(want2d);
     labels.setVisible(!want2d);
-    paper.setShown(!want2d);
-    hud.paperTray.hidden = want2d;
+    samples.setShown(!want2d);
+    hud.sampleTray.hidden = want2d;
     if (pointer) pointer.refresh();
   }
 
   // ---- UI ----
   const hud = createHud(uiRoot);
-  // Paper tray: the drag starts on the sheet in the tray and ends over the water.
-  hud.paperSheet.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || in2d) return;
-    e.preventDefault();
-    hud.paperSheet.setPointerCapture(e.pointerId);
-    paper.takeFromTray(e.clientX, e.clientY);
-    hud.paperTray.classList.add('is-taken');
+  // Samples (paper, duck): picked on the canvas before pointer.js sees the event, dragged from the tray.
+  const samples = new Samples(canvas, sources, [paper, duck], {
+    changed: () => {
+      hud.setTaken('paper', paper.on);
+      hud.setTaken('duck', duck.on);
+      if (bin) bin.setCount(samples.countOnWater);
+    },
+    touched: () => unfreeze(),
+    overBin: (x, y) => !!bin && bin.contains(x, y),
+    hoverBin: (on) => { if (bin) bin.setHover(on); },
+    binPoint: (out) => !!bin && bin.centre(out),
+    discarded: () => { if (bin) bin.swallow(); },
   });
-  hud.paperSheet.addEventListener('pointermove', (e) => paper.moveTo(e.clientX, e.clientY));
-  const trayUp = (e) => {
-    paper.release(e.clientX, e.clientY);
-    hud.paperTray.classList.remove('is-taken');
-  };
-  hud.paperSheet.addEventListener('pointerup', trayUp);
-  hud.paperSheet.addEventListener('pointercancel', trayUp);
-  const ui = { settingsOpen: false, presenting: false };
+  let bin = null;
+  samples.bindTray(hud.thumbs.paper, paper, () => !in2d);
+  samples.bindTray(hud.thumbs.duck, duck, () => !in2d);
+  const ui = { settingsOpen: false, presenting: false, frozen: false };
+
+  // Freeze frame: time stops for everything that moves the water (sim, emitters, balls, samples, 2D crests,
+  // line fade-in); rendering, camera, views and UI keep working. Not persisted.
+  function setFrozen(v) {
+    if (ui.frozen === v) return;
+    ui.frozen = v;
+    if (toolbar) toolbar.sync(ui);
+  }
+  const unfreeze = () => setFrozen(false);
+  // Settings that only change how the scene is viewed keep the freeze; any other change unfreezes first.
+  const VIEW_ONLY = new Set(['view', 'cameraPitch', 'showMaxima', 'showMinima', 'show2dTroughs', 'show2dGrid',
+    'quality', 'reflection', 'refraction', 'foam', 'showFps', 'ballColor', 'ballSize', 'moveMode']);
   let panel = null;
   let toolbar = null;
   let tuning = null;
@@ -206,6 +223,7 @@ function start() {
   }
 
   function onChange(key) {
+    if (!VIEW_ONLY.has(key)) unfreeze();
     // Unlinking the frequencies starts every source at the linked value, so nothing jumps.
     if (key === 'perSourceFreq' && settings.perSourceFreq) settings.sourceFreqs.fill(settings.frequency);
     sources.apply(settings);
@@ -224,6 +242,7 @@ function start() {
   }
 
   function resetDefaults() {
+    unfreeze();
     Object.assign(settings, sanitize(null));
     sources.apply(settings);
     balls.radius = BALL_RADIUS * settings.ballSize;
@@ -270,19 +289,24 @@ function start() {
   const setView = (id) => { settings.view = id; onChange('view'); };
   const nextView = () => setView(VIEWS[(VIEWS.indexOf(settings.view) + 1) % VIEWS.length]);
   const toggleMoveMode = () => { settings.moveMode = !settings.moveMode; onChange('moveMode'); };
+  const toggleFreeze = () => setFrozen(!ui.frozen);
   const clearWaves = () => {
+    unfreeze();
     sim.reset();
     sources.restart();
   };
   const resetPositions = () => {
+    unfreeze();
     sources.resetPositions();
     refreshInfo();
   };
 
-  const bottomSlot = createChrome(uiRoot);
-  toolbar = createToolbar(bottomSlot, settings, {
+  const { toolbarSlot, cornerSlot } = createChrome(uiRoot);
+  bin = createBin(cornerSlot, () => samples.removeAll());
+  toolbar = createToolbar(toolbarSlot, settings, {
     setCount,
     toggleRunning,
+    toggleFreeze,
     clearWaves,
     toggleSettings: () => setSettingsOpen(!ui.settingsOpen),
     togglePresentation: () => setPresenting(!ui.presenting),
@@ -308,6 +332,7 @@ function start() {
   installKeys({
     setCount,
     toggleRunning,
+    toggleFreeze,
     toggleLayout: () => { settings.layout = settings.layout === 'hang' ? 'vuong' : 'hang'; onChange('layout'); },
     nextView,
     toggleMoveMode,
@@ -322,9 +347,13 @@ function start() {
 
   // ---- Pointer: drops, or dragging sources in move mode ----
   pointer = installPointer(canvas, framing, sources, () => ({ is2d: in2d, moveMode: settings.moveMode }), {
-    drop: (x, z) => sources.addDrop(x, z),
+    drop: (x, z) => {
+      unfreeze();
+      sources.addDrop(x, z);
+    },
     moveSource: (i, x, z) => {
       if (!sources.moveTo(i, x, z)) return;
+      unfreeze();
       if (sources.count === 2) {
         // Keep the spacing slider in sync without re-applying the layout.
         const d = Math.round(sources.distance12 * 10) / 10;
@@ -358,9 +387,10 @@ function start() {
   let hudTimer = 0;
   function frame(now) {
     try {
-      const dt = last < 0 ? 0 : Math.min((now - last) / 1000, 0.1);
+      const rdt = last < 0 ? 0 : Math.min((now - last) / 1000, 0.1);   // wall-clock step
+      const dt = ui.frozen ? 0 : rdt;                                    // simulation step
       last = now;
-      pointer.tick(dt);
+      pointer.tick(rdt);
       const emitters = sources.update(dt);
       if (in2d) {
         quality.meter.tick(now / 1000);   // FPS readout only; adaptive quality is for the 3D views
@@ -369,10 +399,10 @@ function start() {
         view2d.draw(framing, sources, lines, settings, pointer.hover);
       } else {
         quality.update(now / 1000);
-        if (blender.update(dt)) applyEnvironment();
+        if (blender.update(rdt)) applyEnvironment();
         sources.afterStep(sim.step(dt, emitters));
         balls.update(sim, sources, pointer.hover);
-        paper.update(dt);
+        samples.update(dt, rdt, balls);
         surface.update(sim, sim.renderTime, balls);
         lines.update(settings, sources);
         if (linesWanted()) surface.setLines(lines, renderer.getPixelRatio(), framing.scale2d);
@@ -383,7 +413,7 @@ function start() {
         tourPending = false;
         setTimeout(() => tour.autoStart(), 600);
       }
-      hudTimer += dt;
+      hudTimer += rdt;
       if (settings.showFps && hudTimer > 0.5) {
         hudTimer = 0;
         hud.setFps(quality.meter.fps, STR.panel.qualityNames[quality.current.level]);
