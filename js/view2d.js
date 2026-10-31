@@ -4,7 +4,7 @@
 // and clock as the sim. Optional grid, interference lines (lines.js), S1-S2 line, source markers.
 import { WAVE_SPEED, BALL_HEX, MAX_SOURCES } from './config.js';
 import { STR } from './ui/strings.js';
-import { LINE_COLORS, MULTI_LEVELS, MULTI_DASHES } from './lines.js';
+import { LINE_COLORS, MULTI_LEVELS } from './lines.js';
 
 const BG = '#0A0D11';
 const GRID = 'rgba(255, 255, 255, 0.07)';
@@ -13,13 +13,14 @@ const LINK = 'rgba(204, 96, 88, 0.8)';       // muted red, S1-S2
 const GRID_STEPS = [0.25, 0.5, 1, 2, 4];
 const GRID_MIN_PX = 40;
 const CURVE_SAMPLES = 128;
-const NEAR_SOURCE = 0.6;                        // world units kept clear around a marker
+const MARKER_R = 7;                             // source marker radius, CSS px (hovered: +2)
+const LINE_CLEAR_PX = MARKER_R + 4;             // lines end this far from a source centre (just outside the dot)
 const TWO_PI = Math.PI * 2;
 const MAX_DPR = 2;                              // a 3x canvas costs 2.25x the fill for no visible gain on thin lines
 const RING_STEPS = 96;                          // angular samples used to find the on-screen part of a ring
 const CONTOUR_PX = 5;                           // 3-4 sources: envelope sample spacing (CSS px)
-const SEG_STRIDE = 8;
-const FADE_LEVELS = 4;                          // alpha steps of the fading contour segments                           // x1, y1, x2, y2, r_0..r_3 (distances at the midpoint)
+const PT_STRIDE = 6;                            // contour polyline points: x, y (CSS px), r_0..r_3 (world distances)
+const FADE_LEVELS = 4;                          // alpha steps of the fading contour segments
 
 export class View2D {
   constructor(sceneCanvas) {
@@ -32,6 +33,7 @@ export class View2D {
     this._xs = new Float32Array(CURVE_SAMPLES + 1);
     this._ys = new Float32Array(CURVE_SAMPLES + 1);
     this._as = new Float32Array(CURVE_SAMPLES + 1);
+    this._dn = new Float32Array(CURVE_SAMPLES + 1);   // distance to the nearest source minus the clearance
     this._s = { x: 0, y: 0 };
     this._dashTrough = [3, 4];
     this._dashMin = [7, 5];
@@ -46,13 +48,19 @@ export class View2D {
     }
     this._fontPx = 0;
     this._font = '';
-    // 3-4 sources: contour segments, rebuilt only when the inputs change (see _contours).
+    // 3-4 sources: contour polylines, rebuilt only when the inputs change (see _contours).
     this._cKey = new Float64Array(17).fill(NaN);
     this._cGrid = new Float32Array(0);
-    this._cMax = new Float32Array(0);
-    this._cMin = new Float32Array(0);
-    this._cMaxN = 0;
-    this._cMinN = 0;
+    this._ePx = new Float32Array(0);    // per grid edge: crossing point of the current level
+    this._ePy = new Float32Array(0);
+    this._adj0 = new Int32Array(0);     // per grid edge: the (at most two) segments ending on it
+    this._adj1 = new Int32Array(0);
+    this._segA = new Int32Array(0);     // per segment: its two edge ids
+    this._segB = new Int32Array(0);
+    this._segSeen = new Uint8Array(0);
+    this._cMax = { pts: new Float32Array(0), n: 0, starts: new Int32Array(0), chains: 0 };
+    this._cMin = { pts: new Float32Array(0), n: 0, starts: new Int32Array(0), chains: 0 };
+    this._cVis = new Float32Array(0);
     this._env = { n: 0, arg: 0, near: 0 };
   }
 
@@ -80,8 +88,8 @@ export class View2D {
     this._waves(framing, sources, settings.show2dTroughs);
     if (lines.multi) {
       if (lines.drawMax || lines.drawMin) this._contours(framing, lines);
-      if (lines.drawMin) this._segments(lines, this._cMin, this._cMinN, LINE_COLORS.min);
-      if (lines.drawMax) this._segments(lines, this._cMax, this._cMaxN, LINE_COLORS.max);
+      if (lines.drawMin) this._polylines(lines, this._cMin, LINE_COLORS.min, this._dashMin);
+      if (lines.drawMax) this._polylines(lines, this._cMax, LINE_COLORS.max, this._noDash);
     } else {
       if (lines.drawMin) this._lines(framing, lines, lines.minDelta, lines.minCount, LINE_COLORS.min, this._dashMin);
       if (lines.drawMax) this._lines(framing, lines, lines.maxDelta, lines.maxCount, LINE_COLORS.max, this._noDash);
@@ -219,12 +227,16 @@ export class View2D {
     const xs = this._xs;
     const ys = this._ys;
     const as = this._as;
+    const dn = this._dn;
+    const clear = LINE_CLEAR_PX / f.scale2d;
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.setLineDash(dash);
     for (let k = 0; k < count; k++) {
       const half = deltas[k] / 2;
       const b = Math.sqrt(Math.max(c * c - half * half, 0));
+      // |delta| = d: the branch degenerates into the ray beyond a source, traced twice; draw one half only.
+      const j0 = b < 1e-6 * c ? CURVE_SAMPLES / 2 : 0;
       for (let j = 0; j <= CURVE_SAMPLES; j++) {
         const sv = -sMax + (2 * sMax * j) / CURVE_SAMPLES;
         const X = -half * Math.cosh(sv);
@@ -233,29 +245,43 @@ export class View2D {
         const wz = mz + X * uz + Y * ux;
         const r1 = Math.hypot(wx - L.ax, wz - L.az);
         const r2 = Math.hypot(wx - L.bx, wz - L.bz);
-        const near = Math.min(r1, r2) < NEAR_SOURCE ? 0 : 1;
-        as[j] = L.visibility(r1, r2) * near;
+        dn[j] = Math.min(r1, r2) - clear;
+        as[j] = j < j0 ? 0 : L.visibility(r1, r2);
         const sc = f.worldToScreen2d(wx, wz, this._s);
         xs[j] = sc.x;
         ys[j] = sc.y;
       }
-      // Fully visible runs as one path (continuous dashes), fading segments one by one.
+      // Fully visible runs as one path (continuous dashes), clipped exactly at the clearance circle
+      // around each marker; fading segments (lines still growing) one by one.
       ctx.globalAlpha = 1;
       ctx.beginPath();
       let pen = false;
       for (let j = 1; j <= CURVE_SAMPLES; j++) {
-        if (Math.min(as[j - 1], as[j]) >= 0.999) {
+        if (Math.min(as[j - 1], as[j]) < 0.999) { pen = false; continue; }
+        const in0 = dn[j - 1] >= 0;
+        const in1 = dn[j] >= 0;
+        if (!in0 && !in1) { pen = false; continue; }
+        const t = in0 && in1 ? 0 : dn[j - 1] / (dn[j - 1] - dn[j]);   // crossing of the clearance circle
+        const cx = xs[j - 1] + (xs[j] - xs[j - 1]) * t;
+        const cy = ys[j - 1] + (ys[j] - ys[j - 1]) * t;
+        if (in0 && in1) {
           if (!pen) ctx.moveTo(xs[j - 1], ys[j - 1]);
           ctx.lineTo(xs[j], ys[j]);
           pen = true;
-        } else {
+        } else if (in0) {
+          if (!pen) ctx.moveTo(xs[j - 1], ys[j - 1]);
+          ctx.lineTo(cx, cy);
           pen = false;
+        } else {
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(xs[j], ys[j]);
+          pen = true;
         }
       }
       ctx.stroke();
       for (let j = 1; j <= CURVE_SAMPLES; j++) {
         const a = Math.min(as[j - 1], as[j]);
-        if (a >= 0.999 || a <= 0.01) continue;
+        if (a >= 0.999 || a <= 0.01 || dn[j - 1] < 0 || dn[j] < 0) continue;
         ctx.globalAlpha = a;
         ctx.beginPath();
         ctx.moveTo(xs[j - 1], ys[j - 1]);
@@ -267,8 +293,8 @@ export class View2D {
   }
 
   // 3-4 sources: marching squares on the envelope n (lines.js) sampled every CONTOUR_PX, for the maxima
-  // and minima levels. Runs only when count / lambda / positions / phases / canvas change; the cached
-  // segments are redrawn every frame.
+  // and minima levels, chained into polylines (so the minima dashes run evenly along each contour). Runs
+  // only when count / lambda / positions / phases / canvas change; the cached polylines are redrawn every frame.
   _contours(f, L) {
     const key = this._cKey;
     let same = key[0] === L.count && key[1] === L.lambda && key[2] === f.width && key[3] === f.height
@@ -286,7 +312,14 @@ export class View2D {
 
     const nx = Math.ceil(f.width / CONTOUR_PX) + 1;
     const ny = Math.ceil(f.height / CONTOUR_PX) + 1;
-    if (this._cGrid.length < nx * ny) this._cGrid = new Float32Array(nx * ny);
+    const cells = nx * ny;
+    if (this._cGrid.length < cells) {
+      this._cGrid = new Float32Array(cells);
+      this._ePx = new Float32Array(cells * 2);
+      this._ePy = new Float32Array(cells * 2);
+      this._adj0 = new Int32Array(cells * 2);
+      this._adj1 = new Int32Array(cells * 2);
+    }
     const g = this._cGrid;
     const w = this._s;
     const env = this._env;
@@ -296,51 +329,45 @@ export class View2D {
         g[j * nx + i] = L.envelope(w.x, w.z, env).n;
       }
     }
-    this._cMaxN = this._march(f, L, nx, ny, MULTI_LEVELS.max, false);
-    this._cMinN = this._march(f, L, nx, ny, MULTI_LEVELS.min, true);
+    this._march(f, L, nx, ny, MULTI_LEVELS.max, this._cMax);
+    this._march(f, L, nx, ny, MULTI_LEVELS.min, this._cMin);
   }
 
-  // Segments of the contour n = level into this._cMax / this._cMin; returns the segment count.
-  // Minima keep only the "on" part of the dash pattern (dashes follow arg(sum), as in the 3D shader).
-  _march(f, L, nx, ny, level, dashed) {
+  // Contour n = level as polylines into out { pts, n, starts, chains }. Grid edges are numbered
+  // (j nx + i) 2 (horizontal, (i, j) -> (i + 1, j)) and + 1 (vertical, (i, j) -> (i, j + 1)); a contour
+  // crosses an edge at most once, so two segments sharing an edge id are joined there.
+  _march(f, L, nx, ny, level, out) {
     const g = this._cGrid;
-    let buf = dashed ? this._cMin : this._cMax;
-    let n = 0;
+    const ex = this._ePx;
+    const ey = this._ePy;
+    const adj0 = this._adj0;
+    const adj1 = this._adj1;
+    adj0.fill(-1, 0, nx * ny * 2);
+    adj1.fill(-1, 0, nx * ny * 2);
     const s = CONTOUR_PX;
-    const pt = this._xs;              // scratch: 4 edge points (x, y) in _xs[0..3], _ys[0..3]
-    const pu = this._ys;
     const w = this._s;
     const env = this._env;
-    const edge = (e, i, j, a, b, c, d) => {
-      // e: 0 top (a-b), 1 right (b-c), 2 bottom (d-c), 3 left (a-d)
-      const x0 = i * s;
-      const y0 = j * s;
-      if (e === 0) { pt[0] = x0 + s * (level - a) / (b - a); pu[0] = y0; }
-      else if (e === 1) { pt[1] = x0 + s; pu[1] = y0 + s * (level - b) / (c - b); }
-      else if (e === 2) { pt[2] = x0 + s * (level - d) / (c - d); pu[2] = y0 + s; }
-      else { pt[3] = x0; pu[3] = y0 + s * (level - a) / (d - a); }
+    const clear = LINE_CLEAR_PX / f.scale2d;
+    let nSeg = 0;
+    const cross = (id, va, vb, x0, y0, horizontal) => {
+      const t = (level - va) / (vb - va);
+      ex[id] = horizontal ? x0 + s * t : x0;
+      ey[id] = horizontal ? y0 : y0 + s * t;
     };
     const emit = (e0, e1) => {
-      const x1 = pt[e0], y1 = pu[e0], x2 = pt[e1], y2 = pu[e1];
-      f.screenToWorld2d((x1 + x2) / 2, (y1 + y2) / 2, w);
-      L.envelope(w.x, w.z, env);
-      if (env.near < NEAR_SOURCE) return;
-      if (dashed) {
-        let u = (env.arg / TWO_PI) * MULTI_DASHES;
-        u -= Math.floor(u);
-        if (u >= 0.6) return;
+      // Segments next to a source are dropped (the line ends just outside the marker).
+      f.screenToWorld2d((ex[e0] + ex[e1]) / 2, (ey[e0] + ey[e1]) / 2, w);
+      if (L.envelope(w.x, w.z, env).near < clear) return;
+      if (this._segA.length <= nSeg) {
+        const size = Math.max(4096, this._segA.length * 2);
+        const a = new Int32Array(size); a.set(this._segA); this._segA = a;
+        const b = new Int32Array(size); b.set(this._segB); this._segB = b;
       }
-      if (buf.length < (n + 1) * SEG_STRIDE) {
-        const bigger = new Float32Array(Math.max(1024 * SEG_STRIDE, buf.length * 2));
-        bigger.set(buf);
-        buf = bigger;
-      }
-      const o = n * SEG_STRIDE;
-      buf[o] = x1; buf[o + 1] = y1; buf[o + 2] = x2; buf[o + 3] = y2;
-      for (let k = 0; k < 4; k++) {
-        buf[o + 4 + k] = k < L.count ? Math.hypot(w.x - L.mx[k], w.z - L.mz[k]) : 0;
-      }
-      n++;
+      this._segA[nSeg] = e0;
+      this._segB[nSeg] = e1;
+      if (adj0[e0] < 0) adj0[e0] = nSeg; else adj1[e0] = nSeg;
+      if (adj0[e1] < 0) adj0[e1] = nSeg; else adj1[e1] = nSeg;
+      nSeg++;
     };
     for (let j = 0; j < ny - 1; j++) {
       for (let i = 0; i < nx - 1; i++) {
@@ -350,48 +377,126 @@ export class View2D {
         const d = g[(j + 1) * nx + i];
         const idx = (a >= level ? 1 : 0) | (b >= level ? 2 : 0) | (c >= level ? 4 : 0) | (d >= level ? 8 : 0);
         if (idx === 0 || idx === 15) continue;
-        for (let e = 0; e < 4; e++) edge(e, i, j, a, b, c, d);
+        const x0 = i * s;
+        const y0 = j * s;
+        const e0 = (j * nx + i) * 2;              // top
+        const e1 = (j * nx + i + 1) * 2 + 1;      // right
+        const e2 = ((j + 1) * nx + i) * 2;        // bottom
+        const e3 = (j * nx + i) * 2 + 1;          // left
+        if ((a >= level) !== (b >= level)) cross(e0, a, b, x0, y0, true);
+        if ((b >= level) !== (c >= level)) cross(e1, b, c, x0 + s, y0, false);
+        if ((d >= level) !== (c >= level)) cross(e2, d, c, x0, y0 + s, true);
+        if ((a >= level) !== (d >= level)) cross(e3, a, d, x0, y0, false);
         switch (idx) {
-          case 1: case 14: emit(3, 0); break;
-          case 2: case 13: emit(0, 1); break;
-          case 3: case 12: emit(3, 1); break;
-          case 4: case 11: emit(1, 2); break;
-          case 6: case 9: emit(0, 2); break;
-          case 7: case 8: emit(3, 2); break;
+          case 1: case 14: emit(e3, e0); break;
+          case 2: case 13: emit(e0, e1); break;
+          case 3: case 12: emit(e3, e1); break;
+          case 4: case 11: emit(e1, e2); break;
+          case 6: case 9: emit(e0, e2); break;
+          case 7: case 8: emit(e3, e2); break;
           case 5: case 10: {
             // Saddle: the centre value decides which corners are connected.
             const centreAbove = (a + b + c + d) / 4 >= level;
-            if ((idx === 5) === centreAbove) { emit(0, 1); emit(2, 3); } else { emit(3, 0); emit(1, 2); }
+            if ((idx === 5) === centreAbove) { emit(e0, e1); emit(e2, e3); } else { emit(e3, e0); emit(e1, e2); }
             break;
           }
           default: break;
         }
       }
     }
-    if (dashed) this._cMin = buf; else this._cMax = buf;
-    return n;
+    this._chain(L, f, nSeg, out);
   }
 
-  // Cached contour segments with the grow-outward fade (lines.js visibilityMulti), quantised to a few
-  // alpha levels so a frame costs at most FADE_LEVELS strokes per colour.
-  _segments(L, buf, count, color) {
+  // Joins the segments into polylines (open chains start at a free end; closed loops repeat their first point).
+  _chain(L, f, nSeg, out) {
+    const A = this._segA;
+    const B = this._segB;
+    const adj0 = this._adj0;
+    const adj1 = this._adj1;
+    if (this._segSeen.length < nSeg) this._segSeen = new Uint8Array(A.length);
+    const seen = this._segSeen;
+    seen.fill(0, 0, nSeg);
+    const other = (seg, e) => (adj0[e] === seg ? adj1[e] : adj0[e]);
+    const w = this._s;
+    let n = 0;
+    let chains = 0;
+    const push = (e) => {
+      if (out.pts.length < (n + 1) * PT_STRIDE) {
+        const bigger = new Float32Array(Math.max(4096 * PT_STRIDE, out.pts.length * 2));
+        bigger.set(out.pts);
+        out.pts = bigger;
+      }
+      const o = n * PT_STRIDE;
+      const x = this._ePx[e];
+      const y = this._ePy[e];
+      out.pts[o] = x;
+      out.pts[o + 1] = y;
+      f.screenToWorld2d(x, y, w);
+      for (let k = 0; k < 4; k++) out.pts[o + 2 + k] = k < L.count ? Math.hypot(w.x - L.mx[k], w.z - L.mz[k]) : 0;
+      n++;
+    };
+    for (let s0 = 0; s0 < nSeg; s0++) {
+      if (seen[s0]) continue;
+      // Walk back from s0 to a free end (or once around a loop).
+      let seg = s0;
+      let e = A[s0];
+      for (let guard = 0; guard < nSeg; guard++) {
+        const nxt = other(seg, e);
+        if (nxt < 0) break;
+        if (nxt === s0) { seg = s0; e = A[s0]; break; }
+        e = A[nxt] === e ? B[nxt] : A[nxt];
+        seg = nxt;
+      }
+      if (out.starts.length <= chains + 1) {
+        const bigger = new Int32Array(Math.max(1024, out.starts.length * 2));
+        bigger.set(out.starts);
+        out.starts = bigger;
+      }
+      out.starts[chains++] = n;
+      push(e);
+      for (;;) {
+        seen[seg] = 1;
+        e = A[seg] === e ? B[seg] : A[seg];
+        push(e);
+        const nxt = other(seg, e);
+        if (nxt < 0 || seen[nxt]) break;
+        seg = nxt;
+      }
+    }
+    out.starts[chains] = n;
+    out.n = n;
+    out.chains = chains;
+  }
+
+  // Cached contour polylines with the grow-outward fade (lines.js visibilityMulti), quantised to a few
+  // alpha levels so a frame costs at most FADE_LEVELS strokes per colour. Runs of equal alpha are one
+  // subpath, so the dash pattern stays continuous along a contour.
+  _polylines(L, c, color, dash) {
     const ctx = this.ctx;
+    const pts = c.pts;
+    if (this._cVis.length < c.n) this._cVis = new Float32Array(pts.length / PT_STRIDE);
+    const vis = this._cVis;
+    for (let i = 0; i < c.n; i++) vis[i] = L.visibilityMulti(pts, i * PT_STRIDE + 2);
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
-    ctx.setLineDash(this._noDash);
+    ctx.setLineDash(dash);
     for (let lv = 1; lv <= FADE_LEVELS; lv++) {
       const lo = (lv - 1) / FADE_LEVELS;
       const hi = lv / FADE_LEVELS;
       ctx.globalAlpha = hi;
       ctx.beginPath();
       let any = false;
-      for (let k = 0; k < count; k++) {
-        const o = k * SEG_STRIDE;
-        const a = L.visibilityMulti(buf, o + 4);
-        if (a <= lo || (a > hi && lv < FADE_LEVELS)) continue;
-        ctx.moveTo(buf[o], buf[o + 1]);
-        ctx.lineTo(buf[o + 2], buf[o + 3]);
-        any = true;
+      for (let ch = 0; ch < c.chains; ch++) {
+        const end = c.starts[ch + 1];
+        let pen = false;
+        for (let i = c.starts[ch] + 1; i < end; i++) {
+          const a = Math.min(vis[i - 1], vis[i]);
+          if (a <= lo || (a > hi && lv < FADE_LEVELS)) { pen = false; continue; }
+          if (!pen) ctx.moveTo(pts[(i - 1) * PT_STRIDE], pts[(i - 1) * PT_STRIDE + 1]);
+          ctx.lineTo(pts[i * PT_STRIDE], pts[i * PT_STRIDE + 1]);
+          pen = true;
+          any = true;
+        }
       }
       if (any) ctx.stroke();
     }
@@ -427,7 +532,7 @@ export class View2D {
     for (let i = 0; i < n && i < MAX_SOURCES; i++) {
       const s = f.worldToScreen2d(p[i * 2], p[i * 2 + 1], this._s);
       const hot = i === hover;
-      const r = hot ? 9 : 7;
+      const r = hot ? MARKER_R + 2 : MARKER_R;
       ctx.beginPath();
       ctx.arc(s.x, s.y, r, 0, TWO_PI);
       ctx.fillStyle = this._ballColor;

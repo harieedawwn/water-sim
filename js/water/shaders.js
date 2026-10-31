@@ -331,11 +331,11 @@ void main() {
       sum += w * vec2(cos(th), sin(th));
       wsum += w;
       gap = min(gap, q.w - r);
-      near = min(near, r);
+      near = min(near, r - uBalls[i].w);         // distance to the edge of ball i (source i)
     }
     float nv = length(sum) / wsum;
     float nw = max(fwidth(nv), 1e-6);
-    vis = clamp(gap / uLineFade, 0.0, 1.0) * smoothstep(0.5, 0.65, near);
+    vis = clamp(gap / uLineFade, 0.0, 1.0) * smoothstep(0.02, 0.1, near);   // lines run up to the balls
     pxMax = abs(nv - uLineLevels.x) / nw;
     pxMin = abs(nv - uLineLevels.y) / nw;
     // arg(sum) turns once around every node: a few dashes per minima loop.
@@ -347,8 +347,9 @@ void main() {
   float r2 = distance(vWorld.xz, uLineSrc.zw);
   float lx = (r2 - r1) / uLineLambda - uLineCycles;
   float lw = max(fwidth(lx), 1e-6);
+  // Lines run up to the ball edges and fade out only in a thin band right at the edge.
   vis = clamp(min(uLineReach.x - r1, uLineReach.y - r2) / uLineFade, 0.0, 1.0)
-            * smoothstep(0.5, 0.65, min(r1, r2));     // keep clear of the balls
+            * smoothstep(0.02, 0.1, min(r1 - uBalls[0].w, r2 - uBalls[1].w));
   pxMax = abs(fract(lx + 0.5) - 0.5) / lw;     // distance to the line in px
   pxMin = abs(fract(lx) - 0.5) / lw;
   // Dashes of the minima: approximate arc length from the hyperbola vertex,
