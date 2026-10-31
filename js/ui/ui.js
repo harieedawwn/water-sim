@@ -37,7 +37,7 @@ export function createSettingsPanel(container, settings, actions) {
   const syncers = [];
 
   const head = el('div', 'panel__head');
-  head.append(el('h2', 'panel__title', P.title));
+  head.append(el('h2', 'panel__title panel__title--glow', P.title));
   const closeBtn = el('button', 'btn btn--icon btn--quiet');
   closeBtn.type = 'button';
   closeBtn.innerHTML = ICONS.close;

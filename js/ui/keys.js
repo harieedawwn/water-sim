@@ -4,6 +4,7 @@
 const CODES = {
   Digit1: ['setCount', 1], Numpad1: ['setCount', 1],
   Digit2: ['setCount', 2], Numpad2: ['setCount', 2],
+  Digit3: ['setCount', 3], Numpad3: ['setCount', 3],
   Digit4: ['setCount', 4], Numpad4: ['setCount', 4],
   KeyL: ['toggleLayout'],
   Space: ['toggleRunning'],

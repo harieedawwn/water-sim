@@ -15,9 +15,9 @@ export const WAVE_SPEED = 0.8;
 
 // Fixed ball look (no settings): radius in world units and a calm leaf green (sRGB).
 export const BALL_RADIUS = 0.45;
-export const BALL_HEX = '#4FB36B';
+export const BALL_HEX = '#F5A524';
 // Ball colour presets (sRGB); the first is the default.
-export const BALL_COLORS = ['#4FB36B', '#E5484D', '#F08C2E', '#F2C94C', '#3E8EDE', '#9B6BDF', '#E86FB0', '#E8E8E8'];
+export const BALL_COLORS = ['#F5A524', '#E5484D', '#4FB36B', '#F2C94C', '#3E8EDE', '#9B6BDF', '#E86FB0', '#E8E8E8'];
 
 export const MAX_SOURCES = 4;
 
@@ -32,7 +32,7 @@ export const LIMITS = {
   cameraPitch: { min: 50, max: 90, step: 1 },
 };
 
-export const SOURCE_COUNTS = [1, 2, 4];
+export const SOURCE_COUNTS = [1, 2, 3, 4];
 export const LAYOUTS = ['hang', 'vuong'];
 export const QUALITIES = ['auto', 'low', 'medium', 'high'];
 export const SIM_RESOLUTIONS = [384, 512, 768];

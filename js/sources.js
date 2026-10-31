@@ -113,6 +113,11 @@ export class SourceManager {
       // Ring order, so "alternate sources" are diagonal pairs.
       const h = this.spacing / 2;
       p.set([-h, -h, h, -h, h, h, -h, h]);
+    } else if (this.layout === 'vuong' && n === 3) {
+      // Equilateral triangle with side = spacing, centred on its centroid.
+      const a = this.spacing;
+      const ht = (a * Math.sqrt(3)) / 2;
+      p.set([-a / 2, ht / 3, a / 2, ht / 3, 0, -(2 * ht) / 3]);
     } else {
       // "hang" (and "vuong" for 1 or 2): row along x, centred.
       for (let i = 0; i < n; i++) p[i * 2] = (i - (n - 1) / 2) * this.spacing;

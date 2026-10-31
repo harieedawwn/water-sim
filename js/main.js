@@ -80,7 +80,7 @@ function start() {
     document.documentElement.style.setProperty('--ball-color', settings.ballColor);
   }
   applyBallColor();
-  const paper = new Paper(scene, sources, framing, canvas);
+  const paper = new Paper(scene, sim, sources, framing, canvas);
   const lines = new InterferenceLines();
   const uiRoot = document.getElementById('ui');
   const labels = new SourceLabels(uiRoot);
@@ -112,12 +112,28 @@ function start() {
     view2d.setVisible(want2d);
     labels.setVisible(!want2d);
     paper.setShown(!want2d);
+    hud.paperTray.hidden = want2d;
     if (pointer) pointer.refresh();
   }
 
   // ---- UI ----
   const hud = createHud(uiRoot);
-  const ui = { settingsOpen: false, presenting: false, paperOn: false };
+  // Paper tray: the drag starts on the sheet in the tray and ends over the water.
+  hud.paperSheet.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || in2d) return;
+    e.preventDefault();
+    hud.paperSheet.setPointerCapture(e.pointerId);
+    paper.takeFromTray(e.clientX, e.clientY);
+    hud.paperTray.classList.add('is-taken');
+  });
+  hud.paperSheet.addEventListener('pointermove', (e) => paper.moveTo(e.clientX, e.clientY));
+  const trayUp = (e) => {
+    paper.release(e.clientX, e.clientY);
+    hud.paperTray.classList.remove('is-taken');
+  };
+  hud.paperSheet.addEventListener('pointerup', trayUp);
+  hud.paperSheet.addEventListener('pointercancel', trayUp);
+  const ui = { settingsOpen: false, presenting: false };
   let panel = null;
   let toolbar = null;
   let tuning = null;
@@ -268,7 +284,6 @@ function start() {
     toggleRunning,
     clearWaves,
     toggleSettings: () => setSettingsOpen(!ui.settingsOpen),
-    togglePaper: () => { ui.paperOn = !ui.paperOn; paper.setOn(ui.paperOn); toolbar.sync(ui); },
     togglePresentation: () => setPresenting(!ui.presenting),
     toggleFullscreen,
   });
@@ -348,7 +363,7 @@ function start() {
         if (blender.update(dt)) applyEnvironment();
         sources.afterStep(sim.step(dt, emitters));
         balls.update(sim, sources, pointer.hover);
-        paper.update(dt, sim.renderTime);
+        paper.update(dt);
         surface.update(sim, sim.renderTime, balls);
         lines.update(settings, sources);
         if (linesWanted()) surface.setLines(lines, renderer.getPixelRatio(), framing.scale2d);

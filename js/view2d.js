@@ -69,6 +69,7 @@ export class View2D {
     this._waves(framing, sources, settings.show2dTroughs);
     if (lines.drawMin) this._lines(framing, lines, lines.minDelta, lines.minCount, LINE_COLORS.min, this._dashMin);
     if (lines.drawMax) this._lines(framing, lines, lines.maxDelta, lines.maxCount, LINE_COLORS.max, this._noDash);
+    this._ballColor = settings.ballColor || BALL_HEX;
     this._markers(framing, sources, hover);
   }
 
@@ -280,7 +281,7 @@ export class View2D {
       const r = hot ? 9 : 7;
       ctx.beginPath();
       ctx.arc(s.x, s.y, r, 0, TWO_PI);
-      ctx.fillStyle = settings.ballColor || BALL_HEX;
+      ctx.fillStyle = this._ballColor;
       ctx.fill();
       ctx.lineWidth = hot ? 2.5 : 2;
       ctx.strokeStyle = WAVE;

@@ -44,7 +44,17 @@ export function createHud(container) {
   const fpsLevel = el('span');
   fpsCard.append(document.createTextNode(`${STR.hud.fps} `), fpsValue, fpsLevel);
 
-  hud.append(card, fpsCard);
+  // Paper tray: press the sheet and drag it onto the water (wired in main.js).
+  const tray = el('div', 'hud__card tray plate');
+  tray.title = STR.hud.paperHint;
+  const sheet = el('div', 'tray__sheet');
+  sheet.setAttribute('role', 'button');
+  sheet.setAttribute('aria-label', STR.hud.paperHint);
+  const trayText = el('div', 'tray__text');
+  trayText.append(el('b', null, STR.hud.paper), el('span', null, STR.hud.paperHint));
+  tray.append(sheet, trayText);
+
+  hud.append(card, tray, fpsCard);
   container.append(hud);
 
   let lastKey = '';
@@ -53,6 +63,8 @@ export function createHud(container) {
 
   return {
     element: hud,
+    paperSheet: sheet,
+    paperTray: tray,
 
     // r: { count, freqs } (freqs: Hz per source, at least count entries)
     setReadout(r) {

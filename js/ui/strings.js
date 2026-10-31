@@ -31,8 +31,6 @@ export const STR = {
 
   toolbar: {
     count: 'Số nguồn',
-    paper: 'Mẫu vật',
-    tipPaper: 'Thả một mẩu giấy nhẹ lên mặt nước: kéo để nhấc lên, thả ra để rơi xuống nước',
     run: 'Chạy nguồn',
     stop: 'Dừng nguồn',
     clear: 'Xóa sóng',
@@ -41,7 +39,7 @@ export const STR = {
     fullscreen: 'Toàn màn hình',
     exitFullscreen: 'Thoát toàn màn hình',
     countN: (n) => `${n} nguồn`,
-    tipCount: 'Số nguồn sóng (phím 1, 2, 4)',
+    tipCount: 'Số nguồn sóng (phím 1, 2, 3, 4)',
     tipRun: 'Bật / tắt dao động của các quả bóng (phím Space)',
     tipClear: 'Làm phẳng mặt nước, xóa toàn bộ sóng hiện có',
     tipSettings: 'Mở / đóng bảng cài đặt',
@@ -95,11 +93,11 @@ export const STR = {
     tipAmplitude: 'Độ cao của sóng ở cách nguồn 1 đơn vị.',
     layout: 'Bố cục',
     layoutHang: 'Hàng ngang',
-    layoutVuong: 'Hình vuông',
-    tipLayout: 'Cách xếp các nguồn (phím L). Hình vuông áp dụng khi có 4 bóng.',
+    layoutVuong: 'Tam giác / Vuông',
+    tipLayout: 'Cách xếp các nguồn (phím L). Có 3 nguồn: tam giác đều; có 4 nguồn: hình vuông.',
     ballSize: 'Kích thước bóng',
     ballColor: 'Màu bóng',
-    ballColorNames: ['Xanh lá', 'Đỏ', 'Cam', 'Vàng', 'Xanh dương', 'Tím', 'Hồng', 'Trắng'],
+    ballColorNames: ['Vàng cam', 'Đỏ', 'Xanh lá', 'Vàng', 'Xanh dương', 'Tím', 'Hồng', 'Trắng'],
     tipBallSize: 'Phóng to hoặc thu nhỏ các quả bóng nguồn.',
     pitch: 'Góc nhìn',
     tipPitch: 'Góc của camera so với mặt nước; 90° là nhìn thẳng từ trên xuống.',
@@ -129,6 +127,8 @@ export const STR = {
 
   hud: {
     fps: 'FPS',
+    paper: 'Mẫu vật',
+    paperHint: 'Nhấn giữ tờ giấy, kéo vào mặt nước rồi thả',
   },
 
   tuning: {
