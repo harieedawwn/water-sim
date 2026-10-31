@@ -1,7 +1,7 @@
 // Settings panel: one scrolling list of grouped sections (view, sources, lines, phase, more) and a
 // collapsed "Nâng cao" section. Side panel on desktop, bottom sheet on phones (see style.css).
 import { STR, fmt } from './strings.js';
-import { LIMITS, VIEWS, MAX_SOURCES, BALL_HEX } from '../config.js';
+import { LIMITS, VIEWS, MAX_SOURCES, BALL_COLORS } from '../config.js';
 import { LINE_COLORS } from '../lines.js';
 import { ICONS } from './icons.js';
 
@@ -14,7 +14,7 @@ function el(tag, cls, text) {
 
 function dot() {
   const d = el('span', 'dot');
-  d.style.background = BALL_HEX;
+  d.style.background = 'var(--ball-color)';
   return d;
 }
 
@@ -156,6 +156,7 @@ export function createSettingsPanel(container, settings, actions) {
   }
 
   const PHASE_CHIPS = [0, 15, 30, 45, 60, 90, 180];
+  const CHIP_HUES = [200, 160, 120, 50, 30, 330, 270];   // one colour per preset
   const hz = (v) => `${fmt(v, 2)} ${U.hz}`;
   const deg = (v) => `${Math.round(v)}${U.deg}`;
 
@@ -168,7 +169,6 @@ export function createSettingsPanel(container, settings, actions) {
   // ---- Nguồn sóng ----
   const secSrc = section(P.secSources);
   toggle(secSrc, 'moveMode', P.moveMode, P.tipMoveMode);
-  note(secSrc, P.moveHint);
   slider(secSrc, 'frequency', P.frequency, P.tipFrequency, LIMITS.frequency, hz,
     { isHidden: () => settings.perSourceFreq });
   toggle(secSrc, 'perSourceFreq', P.perSourceFreq, P.tipPerSourceFreq);
@@ -216,6 +216,29 @@ export function createSettingsPanel(container, settings, actions) {
   slider(secMore, 'spacing', P.spacing, P.tipSpacing, LIMITS.spacing, (v) => `${fmt(v, 1)} ${U.len}`);
   slider(secMore, 'amplitude', P.amplitude, P.tipAmplitude, LIMITS.amplitude, (v) => `${fmt(v, 3)} ${U.len}`);
   segmented(secMore, 'layout', P.layout, P.tipLayout, [['hang', P.layoutHang], ['vuong', P.layoutVuong]]);
+  slider(secMore, 'ballSize', P.ballSize, P.tipBallSize, LIMITS.ballSize, (v) => `×${fmt(v, 2)}`);
+  // Ball colour presets: a row of swatches.
+  const colorRow = el('div', 'row');
+  colorRow.append(el('div', 'row__label', null));
+  colorRow.firstChild.append(el('span', 'row__name', P.ballColor));
+  const swatches = el('div', 'swatches');
+  swatches.setAttribute('role', 'group');
+  swatches.setAttribute('aria-label', P.ballColor);
+  const swatchBtns = BALL_COLORS.map((hex, i) => {
+    const b = el('button', 'swatch');
+    b.type = 'button';
+    b.style.background = hex;
+    b.setAttribute('aria-label', P.ballColorNames[i]);
+    b.title = P.ballColorNames[i];
+    b.addEventListener('click', () => { settings.ballColor = hex; actions.onChange('ballColor'); });
+    swatches.append(b);
+    return [hex, b];
+  });
+  colorRow.append(swatches);
+  secMore.append(colorRow);
+  syncers.push(() => {
+    for (const [hex, b] of swatchBtns) b.setAttribute('aria-pressed', String(settings.ballColor === hex));
+  });
   slider(secMore, 'cameraPitch', P.pitch, P.tipPitch, LIMITS.cameraPitch, deg,
     { isHidden: () => settings.view === '2d' });
   toggle(secMore, 'show2dTroughs', P.troughs2d, null, { hidden: () => settings.view !== '2d' });
@@ -235,7 +258,6 @@ export function createSettingsPanel(container, settings, actions) {
   const lowNote = note(adv, P.lowNote);
   toggle(adv, 'showFps', P.showFps);
   button(adv, ICONS.reset, P.reset, P.tipReset, () => actions.resetDefaults(), 'btn--warn');
-  note(adv, P.keys);
 
   let qualityState = { level: 'medium', nx: 0, nz: 0, pixelRatio: 1 };
 
@@ -271,13 +293,13 @@ export function createSettingsPanel(container, settings, actions) {
     chips.setAttribute('aria-label', P.secPhase);
     const chipBtns = PHASE_CHIPS.map((d) => {
       const b = el('button', 'chip', `${d}${U.deg}`);
+      b.style.setProperty('--chip-h', String(CHIP_HUES[PHASE_CHIPS.indexOf(d)]));
       b.type = 'button';
       b.addEventListener('click', () => setPhase(d));
       chips.append(b);
       return [d, b];
     });
     parent.append(seg, sliderRow, chips);
-    note(parent, P.phaseHint);
 
     function setPhase(d) {
       settings.phases[sel] = d;

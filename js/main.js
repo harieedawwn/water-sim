@@ -2,12 +2,13 @@
 import * as THREE from 'three';
 import { STR } from './ui/strings.js';
 import { showError, installShaderErrorHook } from './ui/errors.js';
-import { loadSettings, saveSettings, sanitize, WAVE_SPEED, WORLD_SIZE, LIMITS, VIEWS } from './config.js';
+import { loadSettings, saveSettings, sanitize, BALL_RADIUS, WAVE_SPEED, WORLD_SIZE, LIMITS, VIEWS } from './config.js';
 import { WaterSim } from './water/sim.js';
 import { WaterSurface } from './water/surface.js';
 import { MapBlender } from './maps.js';
 import { SourceManager } from './sources.js';
 import { Balls } from './balls.js';
+import { Paper } from './paper.js';
 import { Framing, CAMERA_FOV } from './framing.js';
 import { InterferenceLines, LINE_COLORS } from './lines.js';
 import { SourceLabels } from './labels.js';
@@ -73,6 +74,13 @@ function start() {
   const sources = new SourceManager(sim, framing);
   sources.apply(settings);
   const balls = new Balls(scene, sim);
+  balls.radius = BALL_RADIUS * settings.ballSize;
+  function applyBallColor() {
+    balls.setColor(settings.ballColor);
+    document.documentElement.style.setProperty('--ball-color', settings.ballColor);
+  }
+  applyBallColor();
+  const paper = new Paper(scene, sources, framing, canvas);
   const lines = new InterferenceLines();
   const uiRoot = document.getElementById('ui');
   const labels = new SourceLabels(uiRoot);
@@ -103,12 +111,13 @@ function start() {
     if (!want2d) blender.setIndex(MAP_OF_VIEW[settings.view]);
     view2d.setVisible(want2d);
     labels.setVisible(!want2d);
+    paper.setShown(!want2d);
     if (pointer) pointer.refresh();
   }
 
   // ---- UI ----
   const hud = createHud(uiRoot);
-  const ui = { settingsOpen: false, presenting: false };
+  const ui = { settingsOpen: false, presenting: false, paperOn: false };
   let panel = null;
   let toolbar = null;
   let tuning = null;
@@ -183,6 +192,8 @@ function start() {
     // Unlinking the frequencies starts every source at the linked value, so nothing jumps.
     if (key === 'perSourceFreq' && settings.perSourceFreq) settings.sourceFreqs.fill(settings.frequency);
     sources.apply(settings);
+    balls.radius = BALL_RADIUS * settings.ballSize;
+    applyBallColor();
     switch (key) {
       case 'cameraPitch': applyFraming(); break;
       case 'view': applyView(); if (tuning) tuning.sync(); break;
@@ -198,6 +209,8 @@ function start() {
   function resetDefaults() {
     Object.assign(settings, sanitize(null));
     sources.apply(settings);
+    balls.radius = BALL_RADIUS * settings.ballSize;
+    applyBallColor();
     applyFraming();
     applyView();
     if (tuning) tuning.sync();
@@ -255,6 +268,7 @@ function start() {
     toggleRunning,
     clearWaves,
     toggleSettings: () => setSettingsOpen(!ui.settingsOpen),
+    togglePaper: () => { ui.paperOn = !ui.paperOn; paper.setOn(ui.paperOn); toolbar.sync(ui); },
     togglePresentation: () => setPresenting(!ui.presenting),
     toggleFullscreen,
   });
@@ -334,10 +348,11 @@ function start() {
         if (blender.update(dt)) applyEnvironment();
         sources.afterStep(sim.step(dt, emitters));
         balls.update(sim, sources, pointer.hover);
+        paper.update(dt, sim.renderTime);
         surface.update(sim, sim.renderTime, balls);
         lines.update(settings, sources);
         if (linesWanted()) surface.setLines(lines, renderer.getPixelRatio(), framing.scale2d);
-        labels.update(framing, sources);
+        labels.update(framing, sources, balls.radius);
         renderer.render(scene, camera);
       }
       hudTimer += dt;

@@ -16,6 +16,8 @@ export const WAVE_SPEED = 0.8;
 // Fixed ball look (no settings): radius in world units and a calm leaf green (sRGB).
 export const BALL_RADIUS = 0.45;
 export const BALL_HEX = '#4FB36B';
+// Ball colour presets (sRGB); the first is the default.
+export const BALL_COLORS = ['#4FB36B', '#E5484D', '#F08C2E', '#F2C94C', '#3E8EDE', '#9B6BDF', '#E86FB0', '#E8E8E8'];
 
 export const MAX_SOURCES = 4;
 
@@ -23,7 +25,8 @@ export const LIMITS = {
   frequency: { min: 0.8, max: 2.4, step: 0.05 },
   amplitude: { min: 0.002, max: 0.03, step: 0.001 },
   spacing: { min: 1, max: 8, step: 0.1 },
-  phase: { min: 0, max: 360, step: 5 },   // initial phase of each source, degrees
+  phase: { min: 0, max: 360, step: 5 },
+  ballSize: { min: 0.4, max: 1.8, step: 0.05 },   // ball radius scale   // initial phase of each source, degrees
   // Below ~50 deg the far edge of the view recedes so fast that the near edge (where the
   // sources sit) shrinks to a few units; above 25 deg + margin the horizon never shows.
   cameraPitch: { min: 50, max: 90, step: 1 },
@@ -58,6 +61,8 @@ export const DEFAULTS = Object.freeze({
   sourcesRunning: true,
   view: 'lake',
   cameraPitch: 50,
+  ballSize: 1,
+  ballColor: BALL_HEX,
   showFps: false,
   moveMode: false,       // not persisted: always starts off
   showMaxima: false,
@@ -127,6 +132,8 @@ export function sanitize(raw) {
     sourcesRunning: bool(r.sourcesRunning, d.sourcesRunning),
     view: viewOf(r),
     cameraPitch: num(r.cameraPitch, d.cameraPitch, LIMITS.cameraPitch),
+    ballSize: num(r.ballSize, d.ballSize, LIMITS.ballSize),
+    ballColor: oneOf(r.ballColor, BALL_COLORS, d.ballColor),
     showFps: bool(r.showFps, d.showFps),
     moveMode: bool(r.moveMode, d.moveMode),
     showMaxima: bool(r.showMaxima, d.showMaxima),

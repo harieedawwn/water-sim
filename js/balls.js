@@ -19,6 +19,7 @@ export class Balls {
     this.geometry = new THREE.SphereGeometry(1, 48, 32);
     this.meshes = [];
     this._highlights = [];
+    this.radius = BALL_RADIUS;   // current radius (ball size setting)
     for (let i = 0; i < MAX_BALLS; i++) {
       const highlight = { value: 0 };
       const material = new THREE.ShaderMaterial({
@@ -39,6 +40,10 @@ export class Balls {
     applyEnv(this.uniforms, p);
   }
 
+  setColor(hex) {
+    this.uniforms.uColor.value.set(hex);
+  }
+
   // hover: index of the highlighted source, or -1.
   update(sim, sources, hover) {
     this.uniforms.uHeight.value = sim.heightTexture;
@@ -50,7 +55,8 @@ export class Balls {
       m.visible = i < sources.count;
       this._highlights[i].value = i === hover ? 1 : 0;
       if (!m.visible) continue;
-      m.position.set(p[i * 2], BALL_RADIUS * REST + bob * sources.oscillation(i, t), p[i * 2 + 1]);
+      m.scale.setScalar(this.radius);
+      m.position.set(p[i * 2], this.radius * REST + bob * sources.oscillation(i, t), p[i * 2 + 1]);
     }
   }
 

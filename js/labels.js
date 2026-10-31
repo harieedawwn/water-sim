@@ -24,14 +24,14 @@ export class SourceLabels {
 
   setVisible(v) { this.element.hidden = !v; }
 
-  update(framing, sources) {
+  update(framing, sources, radius = BALL_RADIUS) {
     const p = sources.positions;
     for (let i = 0; i < MAX_SOURCES; i++) {
       const tag = this._tags[i];
       const show = i < sources.count;
       if (tag.hidden === show) tag.hidden = !show;
       if (!show) continue;
-      const s = framing.worldToScreen3d(p[i * 2], TAG_HEIGHT, p[i * 2 + 1], this._s);
+      const s = framing.worldToScreen3d(p[i * 2], TAG_HEIGHT * radius / BALL_RADIUS, p[i * 2 + 1], this._s);
       if (Math.abs(s.x - this._x[i]) < 0.25 && Math.abs(s.y - this._y[i]) < 0.25) continue;
       this._x[i] = s.x;
       this._y[i] = s.y;

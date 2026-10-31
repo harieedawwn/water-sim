@@ -30,7 +30,9 @@ export const STR = {
   },
 
   toolbar: {
-    count: 'Số bóng',
+    count: 'Số nguồn',
+    paper: 'Mẫu vật',
+    tipPaper: 'Thả một mẩu giấy nhẹ lên mặt nước: kéo để nhấc lên, thả ra để rơi xuống nước',
     run: 'Chạy nguồn',
     stop: 'Dừng nguồn',
     clear: 'Xóa sóng',
@@ -50,8 +52,8 @@ export const STR = {
 
   // Fixed text on the page (title top centre, footer bottom right).
   chrome: {
-    title: 'THÍ NGHIỆM KHẢO SÁT GIAO THOA SÓNG NƯỚC',
-    footer: 'LỚP 11A3, TRƯỜNG THPT TRẦN QUỐC TOẢN, ĐỒNG THÁP',
+    title: 'THÍ NGHIỆM MÔ PHỎNG GIAO THOA SÓNG NƯỚC',
+    footer: 'TRƯỜNG THPT TRẦN QUỐC TOẢN, ĐỒNG THÁP',
   },
 
   panel: {
@@ -69,12 +71,11 @@ export const STR = {
     tipView: 'Chọn mặt hồ, mặt biển hoặc hình vẽ 2D nhìn từ trên xuống (phím M).',
     moveMode: 'Di chuyển nguồn',
     tipMoveMode: 'Bật để kéo các nguồn bằng chuột hoặc ngón tay; tắt thì bấm lên mặt nước để thả giọt (phím D).',
-    moveHint: 'Bật rồi kéo các quả bóng để đổi vị trí.',
     frequency: 'Tần số',
     tipFrequency: 'Số dao động mỗi giây của bóng. Tần số càng cao thì bước sóng càng ngắn.',
     perSourceFreq: 'Chỉnh riêng từng nguồn',
     tipPerSourceFreq: 'Bật để đặt tần số riêng cho từng nguồn; tắt thì một thanh trượt chỉnh tần số cho mọi nguồn.',
-    freqOf: (i) => `Tần số S${i + 1}`,
+    freqOf: (i) => `Tần số S${'₁₂₃₄'[i]}`,
     tipFreqOf: 'Tần số riêng của nguồn này.',
 
     maxima: 'Cực đại',
@@ -86,7 +87,7 @@ export const STR = {
     legendDashed: 'nét đứt',
     linesNeed: 'Cần đúng 2 nguồn cùng tần số',
 
-    phaseOf: (i) => `Pha ban đầu của S${i + 1}`,
+    phaseOf: (i) => `Pha ban đầu của S${'₁₂₃₄'[i]}`,
     phaseHint: 'Pha ban đầu quyết định thời điểm nguồn bắt đầu dao động; nguồn cùng pha khi các giá trị bằng nhau.',
     spacing: 'Khoảng cách nguồn',
     tipSpacing: 'Khoảng cách giữa hai nguồn cạnh nhau.',
@@ -96,6 +97,10 @@ export const STR = {
     layoutHang: 'Hàng ngang',
     layoutVuong: 'Hình vuông',
     tipLayout: 'Cách xếp các nguồn (phím L). Hình vuông áp dụng khi có 4 bóng.',
+    ballSize: 'Kích thước bóng',
+    ballColor: 'Màu bóng',
+    ballColorNames: ['Xanh lá', 'Đỏ', 'Cam', 'Vàng', 'Xanh dương', 'Tím', 'Hồng', 'Trắng'],
+    tipBallSize: 'Phóng to hoặc thu nhỏ các quả bóng nguồn.',
     pitch: 'Góc nhìn',
     tipPitch: 'Góc của camera so với mặt nước; 90° là nhìn thẳng từ trên xuống.',
     troughs2d: 'Đáy sóng (nét đứt)',
@@ -118,8 +123,8 @@ export const STR = {
   },
 
   readout: {
-    f: 'Tần số f',
-    lambda: 'Bước sóng λ',
+    f: 'Tần số (f)',
+    lambda: 'Bước sóng (λ)',
   },
 
   hud: {
@@ -153,7 +158,7 @@ export const STR = {
   },
 
   // Source names everywhere (index 0..3).
-  sourceName: (i) => `S${i + 1}`,
+  sourceName: (i) => `S${'₁₂₃₄'[i]}`,
 };
 
 // Vietnamese number format: decimal comma.

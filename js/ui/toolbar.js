@@ -57,7 +57,7 @@ export function createToolbar(container, settings, actions) {
   clearBtn.addEventListener('click', () => { actions.clearWaves(); clearBtn.blur(); });
 
   const settingsBtn = button('btn', T.tipSettings);
-  settingsBtn.innerHTML = `${ICONS.settings}<span class="btn__text">${T.settings}</span>`;
+  settingsBtn.innerHTML = `${ICONS.settings}<span class="btn__text btn__text--glow">${T.settings}</span>`;
   settingsBtn.setAttribute('aria-label', T.settings);
   settingsBtn.addEventListener('click', () => { actions.toggleSettings(); settingsBtn.blur(); });
 
@@ -69,7 +69,12 @@ export function createToolbar(container, settings, actions) {
   const fsBtn = button('btn btn--icon btn--optional', T.tipFullscreen);
   fsBtn.addEventListener('click', () => { actions.toggleFullscreen(); fsBtn.blur(); });
 
-  bar.append(countGroup, sep(), runBtn, clearBtn, sep(), settingsBtn, presentBtn, fsBtn);
+  const paperBtn = button('btn', T.tipPaper);
+  paperBtn.innerHTML = `${ICONS.paper}<span class="btn__text">${T.paper}</span>`;
+  paperBtn.setAttribute('aria-label', T.paper);
+  paperBtn.addEventListener('click', () => { actions.togglePaper(); paperBtn.blur(); });
+
+  bar.append(countGroup, sep(), runBtn, clearBtn, paperBtn, sep(), settingsBtn, presentBtn, fsBtn);
   container.append(bar);
 
   function sync(state) {
@@ -79,6 +84,8 @@ export function createToolbar(container, settings, actions) {
     runBtn.innerHTML = running ? `${ICONS.pause}<span class="btn__text">${T.stop}</span>` : `${ICONS.play}<span class="btn__text">${T.run}</span>`;
     runBtn.setAttribute('aria-label', running ? T.stop : T.run);
     settingsBtn.setAttribute('aria-pressed', String(!!state.settingsOpen));
+    paperBtn.setAttribute('aria-pressed', String(!!state.paperOn));
+    paperBtn.classList.toggle('btn--accent', !!state.paperOn);
     settingsBtn.classList.toggle('btn--accent', !!state.settingsOpen);
     const fs = !!document.fullscreenElement;
     fsBtn.innerHTML = fs ? ICONS.exitFullscreen : ICONS.fullscreen;

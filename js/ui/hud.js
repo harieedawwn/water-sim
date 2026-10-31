@@ -1,6 +1,6 @@
 // HUD (right side): frequency / wavelength readout and the FPS counter. DOM is written only when values change.
 import { STR, fmt } from './strings.js';
-import { WAVE_SPEED, MAX_SOURCES, BALL_HEX } from '../config.js';
+import { WAVE_SPEED, MAX_SOURCES } from '../config.js';
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -29,7 +29,7 @@ export function createHud(container) {
   for (let i = 0; i < MAX_SOURCES; i++) {
     const li = el('li', 'srclist__row');
     const dot = el('span', 'dot');
-    dot.style.background = BALL_HEX;
+    dot.style.background = 'var(--ball-color)';
     const name = el('b', null, STR.sourceName(i));
     const text = el('span', 'srclist__text');
     li.append(dot, name, text);

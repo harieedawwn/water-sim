@@ -280,7 +280,7 @@ export class View2D {
       const r = hot ? 9 : 7;
       ctx.beginPath();
       ctx.arc(s.x, s.y, r, 0, TWO_PI);
-      ctx.fillStyle = BALL_HEX;
+      ctx.fillStyle = settings.ballColor || BALL_HEX;
       ctx.fill();
       ctx.lineWidth = hot ? 2.5 : 2;
       ctx.strokeStyle = WAVE;

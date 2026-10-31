@@ -1,5 +1,6 @@
 /* ---------- Design tokens ---------- */
 :root {
+  --ball-color: #4FB36B;
   /* Colour: calm dark neutrals, flat solid surfaces, one accent. */
   --c-bg: #080c11;
   --c-plate: rgba(14, 19, 26, 0.88);      /* panels, toolbar, title, footer, readout */
@@ -146,8 +147,8 @@ button { font: inherit; color: inherit; }
   margin: 0;
   padding: var(--s2) var(--s4);
   text-align: center;
-  font-size: clamp(14px, 0.5vw + 9px, 20px);
-  font-weight: 700;
+  font-size: clamp(18px, 0.8vw + 12px, 28px);
+  font-weight: 800;
   line-height: 1.3;
   letter-spacing: 0.04em;
   pointer-events: none;
@@ -259,7 +260,7 @@ button { font: inherit; color: inherit; }
   transition: opacity var(--ease);
 }
 .toolbar__group { display: flex; align-items: center; gap: var(--s2); }
-.toolbar__label { color: var(--c-text-dim); white-space: nowrap; }
+.toolbar__label { color: var(--c-text); white-space: nowrap; font-size: 17px; font-weight: 700; }
 .toolbar__sep { width: 1px; height: 60%; background: var(--c-line); }
 /* Running: neutral. Stopped: the Run button is highlighted so the state is obvious. */
 .toolbar .btn--run[aria-pressed="false"] { border-color: var(--c-warn); }
@@ -274,7 +275,7 @@ button { font: inherit; color: inherit; }
 .panel {
   position: absolute;
   left: calc(var(--sal) + var(--gap));
-  top: calc(var(--sat) + var(--gap));
+  top: calc(var(--sat) + var(--gap) + 30px);
   bottom: var(--bottom-h);
   width: var(--panel-w);
   display: flex;
@@ -488,7 +489,8 @@ button { font: inherit; color: inherit; }
 }
 .chip:hover { color: var(--c-text); background: var(--c-control-hover); }
 .chip:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 1px; }
-.chip[aria-pressed="true"] { background: var(--c-accent); border-color: var(--c-accent); color: var(--c-on-accent); font-weight: 600; }
+.chip { color: hsl(var(--chip-h, 210) 80% 72%); border-color: hsl(var(--chip-h, 210) 60% 45% / 0.7); }
+.chip[aria-pressed="true"] { background: hsl(var(--chip-h, 210) 75% 50%); border-color: hsl(var(--chip-h, 210) 75% 60%); color: #fff; font-weight: 700; }
 
 /* ---------- Readout (right side) ---------- */
 .hud {
@@ -511,7 +513,8 @@ button { font: inherit; color: inherit; }
   margin: 0;
 }
 .kv[hidden] { display: none; }
-.kv dt { color: var(--c-text-dim); }
+.kv dt { color: var(--c-text); font-weight: 700; }
+.kv dd { font-weight: 700; }
 .kv dd { margin: 0; font-family: var(--font-mono); text-align: right; }
 .srclist { display: flex; flex-direction: column; gap: var(--s1); margin: 0; padding: 0; list-style: none; }
 .srclist[hidden], .srclist__row[hidden] { display: none; }
@@ -554,7 +557,7 @@ button { font: inherit; color: inherit; }
 }
 
 /* ---------- Presentation mode: only the title, the footer and the hint stay ---------- */
-body.presenting #ui > *:not(.present-hint):not(.title):not(.bottom):not(.errors) { opacity: 0; pointer-events: none; }
+body.presenting #ui > *:not(.present-hint):not(.title):not(.school):not(.bottom):not(.errors) { opacity: 0; pointer-events: none; }
 body.presenting .toolbar { opacity: 0; pointer-events: none; }
 body.presenting #scene { cursor: none !important; }  /* beats the inline cursor set by pointer.js */
 .present-hint {
@@ -603,12 +606,12 @@ body.presenting #scene { cursor: none !important; }  /* beats the inline cursor 
 
 /* ---------- Compact layouts: title spans the width, panels sit below it ---------- */
 @media (max-width: 1099px), (max-height: 499px) {
-  :root { --top: calc(var(--sat) + 66px); }
+  :root { --top: calc(var(--sat) + 90px); }
   .title {
     top: calc(var(--sat) + var(--s2));
     max-width: calc(100vw - 2 * var(--gap) - var(--sal) - var(--sar));
     padding: var(--s1) var(--s3);
-    font-size: 13px;
+    font-size: 15px;
     letter-spacing: 0.02em;
   }
   .panel { top: var(--top); width: min(var(--panel-w), calc(100vw - 2 * var(--gap))); }
@@ -619,7 +622,7 @@ body.presenting #scene { cursor: none !important; }  /* beats the inline cursor 
 /* Phone landscape: short screen, one-line title. */
 @media (max-height: 499px) {
   :root { --top: calc(var(--sat) + 44px); --gap: var(--s2); --toolbar-h: 48px; }
-  .title { font-size: 12px; }
+  .title { font-size: 14px; }
   .panel { width: min(var(--panel-w), 46vw); }
   .hud__card { padding: var(--s2) var(--s3); font-size: var(--fs-xs); }
 }
@@ -698,3 +701,33 @@ body.presenting #scene { cursor: none !important; }  /* beats the inline cursor 
   line-height: 1.6;
 }
 .boot-fail[hidden] { display: none; }
+
+/* School name: top left, plain red text (no plate). */
+.school {
+  position: absolute;
+  top: calc(var(--sat) + var(--gap));
+  left: calc(var(--sal) + var(--gap));
+  margin: 0;
+  color: #ff2a2a;
+  font-size: clamp(12px, 0.5vw + 8px, 16px);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+@media (max-width: 1099px), (max-height: 499px) {
+  .school { position: absolute; top: calc(var(--sat) + 4px); font-size: 11px; }
+  .title { top: calc(var(--sat) + 26px); }
+}
+/* Settings label glows green. */
+.btn__text--glow { color: #4dff7a; text-shadow: 0 0 6px #2bff5f, 0 0 14px rgba(43, 255, 95, 0.7); font-weight: 700; }
+
+/* Ball colour swatches */
+.swatches { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.swatch {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25); cursor: pointer; padding: 0;
+  transition: transform var(--ease), border-color var(--ease);
+}
+.swatch:hover { transform: scale(1.1); }
+.swatch[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 0 2px var(--c-accent); transform: scale(1.12); }

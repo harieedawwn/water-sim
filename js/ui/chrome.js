@@ -15,8 +15,8 @@ export function createChrome(container) {
   const title = el('h1', 'plate title', STR.chrome.title);
   const bottom = el('div', 'bottom');
   const slot = el('div', 'bottom__slot');
-  const footer = el('p', 'plate footer', STR.chrome.footer);
-  bottom.append(el('div'), slot, footer);
-  container.append(title, bottom);
+  const school = el('p', 'school', STR.chrome.footer);
+  bottom.append(el('div'), slot, el('div'));
+  container.append(school, title, bottom);
   return slot;
 }
