@@ -2,6 +2,7 @@
 // framing.js sizes that domain so it always covers the whole screen (no tank edge, no horizon).
 import * as THREE from 'three';
 import { WATER_VERT, WATER_FRAG, MAX_BALLS } from './shaders.js';
+import { MULTI_LEVELS, MULTI_DASHES } from '../lines.js';
 
 const SEGMENTS = 256;
 
@@ -115,6 +116,9 @@ export class WaterSurface {
       uLineDash: { value: 0.1 },
       uLineMaxColor: { value: hexToVec3(lineColors.max, new THREE.Vector3()) },
       uLineMinColor: { value: hexToVec3(lineColors.min, new THREE.Vector3()) },
+      uLineMCount: { value: 0 },
+      uLineM: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+      uLineLevels: { value: new THREE.Vector4(MULTI_LEVELS.max, MULTI_LEVELS.min, MULTI_LEVELS.rMin, MULTI_DASHES) },
     };
     this.material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -156,6 +160,12 @@ export class WaterSurface {
     u.uLineOn.value.set(lines.drawMax ? 1 : 0, lines.drawMin ? 1 : 0);
     u.uLinePx.value = 0.9 * pixelRatio;
     u.uLineDash.value = 16 / pxPerUnit;
+    u.uLineMCount.value = lines.multi ? lines.count : 0;
+    if (lines.multi) {
+      for (let i = 0; i < lines.count; i++) {
+        u.uLineM.value[i].set(lines.mx[i], lines.mz[i], lines.mPhase[i], lines.mReach[i]);
+      }
+    }
   }
 
   applyMap(p) {

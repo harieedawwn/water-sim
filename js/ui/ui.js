@@ -18,10 +18,13 @@ function dot() {
   return d;
 }
 
-// Exactly 2 sources with equal frequency: the interference lines can be drawn.
+// 2-4 sources with equal frequency: the interference lines can be drawn (hyperbolas for 2 sources,
+// envelope contours for 3-4, see lines.js).
 export function linesAvailable(s) {
-  if (s.sourceCount !== 2) return false;
-  return !s.perSourceFreq || s.sourceFreqs[0] === s.sourceFreqs[1];
+  if (s.sourceCount < 2 || s.sourceCount > 4) return false;
+  if (!s.perSourceFreq) return true;
+  for (let i = 1; i < s.sourceCount; i++) if (s.sourceFreqs[i] !== s.sourceFreqs[0]) return false;
+  return true;
 }
 
 /*

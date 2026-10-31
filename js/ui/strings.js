@@ -83,7 +83,7 @@ export const STR = {
     linesHint: 'Chỉ vẽ khi hình giao thoa đã ổn định.',
     legendSolid: 'nét liền',
     legendDashed: 'nét đứt',
-    linesNeed: 'Cần đúng 2 nguồn cùng tần số',
+    linesNeed: 'Cần ít nhất 2 nguồn cùng tần số',
 
     phaseOf: (i) => `Pha ban đầu của S${'₁₂₃₄'[i]}`,
     phaseHint: 'Pha ban đầu quyết định thời điểm nguồn bắt đầu dao động; nguồn cùng pha khi các giá trị bằng nhau.',
