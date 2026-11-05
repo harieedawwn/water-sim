@@ -108,9 +108,9 @@ function start() {
   function applyView() {
     const want2d = settings.view === '2d';
     if (want2d && !in2d) {
-      leftAt = sim.renderTime;
+      leftAt = sources.time;
     } else if (!want2d && in2d) {
-      sources.rebase(sim.renderTime - leftAt, leftAt);
+      sources.rebase(sources.time - leftAt, leftAt);
       quality.meter.reset();
     }
     in2d = want2d;
@@ -295,6 +295,7 @@ function start() {
     unfreeze();
     sim.reset();
     sources.restart();
+    sources.clearHistory();
   };
   const resetPositions = () => {
     unfreeze();
@@ -396,12 +397,14 @@ function start() {
       if (in2d) {
         quality.meter.tick(now / 1000);   // FPS readout only; adaptive quality is for the 3D views
         sim.advanceTime(dt);
+        sources.track();
         lines.update(settings, sources);
         view2d.draw(framing, sources, lines, settings, pointer.hover);
       } else {
         quality.update(now / 1000);
         if (blender.update(rdt)) applyEnvironment();
         sources.afterStep(sim.step(dt, emitters));
+        sources.track();
         balls.update(sim, sources, pointer.hover);
         samples.update(dt, rdt, balls);
         surface.update(sim, sim.renderTime, balls);
