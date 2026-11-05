@@ -1,7 +1,7 @@
-// Analytic top-down 2D view on its own canvas (not a readback of the GPU sim). For every source the
-// crests already emitted are circles r = v (t - t_n), t_n = (n + 1/4 - phi / 2 pi) / f, between the
-// source's emission start and stop; troughs are the half-period circles. Same v, f, phase, positions
-// and clock as the sim. Optional grid, interference lines (lines.js), S1-S2 line, source markers.
+// Analytic top-down 2D view on its own canvas (not a readback of the GPU sim). Every crest a source has
+// emitted is a circle r = v (t - t_emit) around the source position at that moment (crest history,
+// crests.js); troughs are the half-period circles. Same v, phases, positions and clock as the sim.
+// Optional grid, interference lines (lines.js), S1-S2 line, source markers.
 import { WAVE_SPEED, BALL_HEX, MAX_SOURCES, IS_MOBILE } from './config.js';
 import { STR } from './ui/strings.js';
 import { LINE_COLORS, MULTI_LEVELS } from './lines.js';
@@ -127,42 +127,39 @@ export class View2D {
     ctx.stroke();
   }
 
+  // Crest (solid) and trough (dashed) circles from the crest history (crests.js): every record is a circle
+  // r = v (t - t_emit) around the source position at emission, also after changes, pauses or dragging.
   _waves(f, sources, troughs) {
     const ctx = this.ctx;
     const t = sources.time;
-    const p = sources.positions;
+    const H = sources.crests;
     const W = f.width;
-    const H = f.height;
+    const Hpx = f.height;
     const scale = f.scale2d;
     ctx.strokeStyle = WAVE;
     for (let pass = troughs ? 0 : 1; pass < 2; pass++) {
-      const crest = pass === 1;              // troughs first, crests on top
+      const crest = pass === 1 ? 1 : 0;      // troughs first, crests on top
       ctx.setLineDash(crest ? this._noDash : this._dashTrough);
       ctx.lineWidth = crest ? 1.25 : 1;
-      const phaseAt = crest ? 0.25 : 0.75;
-      for (let i = 0; i < sources.count; i++) {
-        const fr = sources.freqs[i];
-        const cyc = sources.phaseOf(i) / TWO_PI;
-        const sc = f.worldToScreen2d(p[i * 2], p[i * 2 + 1], this._s);
-        const sx = sc.x;
-        const sy = sc.y;
-        // Only rings whose radius lies between the nearest and the farthest point of the screen can be seen.
-        const rMin = Math.hypot(Math.max(0, -sx, sx - W), Math.max(0, -sy, sy - H));
-        const rMax = Math.hypot(Math.max(sx, W - sx), Math.max(sy, H - sy));
-        // Emission times t_n = (n + phaseAt - cyc) / f inside [start, min(t, stop)], not yet off screen.
-        const tFrom = Math.max(sources.start[i], t - rMax / (scale * WAVE_SPEED));
-        const tTo = Math.min(t, sources.stop[i]);
-        const n0 = Math.ceil(tFrom * fr - phaseAt + cyc);
-        const n1 = Math.floor(tTo * fr - phaseAt + cyc);
-        for (let n = n0; n <= n1; n++) {
-          const r = WAVE_SPEED * (t - (n + phaseAt - cyc) / fr);
+      for (let i = 0; i < H.head.length; i++) {
+        for (let j = 0; j < H.size[i]; j++) {
+          const k = H.slot(i, j);
+          if (H.crest[k] !== crest) continue;
+          const r = WAVE_SPEED * (t - H.t[k]);
+          if (r <= 0) continue;
+          const sc = f.worldToScreen2d(H.x[k], H.z[k], this._s);
+          const sx = sc.x;
+          const sy = sc.y;
+          // Only rings whose radius lies between the nearest and the farthest point of the screen can be seen.
           const rPx = r * scale;
-          if (r <= 0 || rPx < rMin - 2) continue;
+          const rMax = Math.hypot(Math.max(sx, W - sx), Math.max(sy, Hpx - sy));
+          const rMin = Math.hypot(Math.max(0, -sx, sx - W), Math.max(0, -sy, sy - Hpx));
+          if (rPx < rMin - 2 || rPx > rMax + 2) continue;
           // Amplitude falls off as 1 / sqrt(r); keep far rings readable.
           const a = Math.max(0.3, 0.95 / Math.sqrt(1 + r / 1.5));
           ctx.globalAlpha = crest ? a : a * 0.5;
           ctx.beginPath();
-          this._ring(sx, sy, rPx, W, H);
+          this._ring(sx, sy, rPx, W, Hpx);
           ctx.stroke();
         }
       }
