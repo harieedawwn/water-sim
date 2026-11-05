@@ -4,7 +4,10 @@
 export const MAX_SOURCES = 8;
 export const MAX_BALLS = 4;
 
-// ---------- Simulation (ping-pong state: r = h, g = hPrev) ----------
+// ---------- Simulation ----------
+// Ping-pong state: r = h^n, g = h^n - h^(n-1), b / a = PML auxiliary fields psi_x, psi_z at n - 1/2
+// (scaled by dt^2 / dx). Storing the step difference instead of h^(n-1) keeps the velocity accurate
+// in half-float targets. Scheme and coefficients: js/water/scheme.js.
 
 export const SIM_VERT = /* glsl */`
 precision highp float;
@@ -21,51 +24,84 @@ precision highp sampler2D;
 
 uniform sampler2D uState;
 uniform vec2 uRes;              // grid size in cells (nx, nz)
-uniform float uC2;              // (c_num * dt / dx)^2
-uniform float uDamp;            // velocity damping per step
-uniform float uSponge;          // sponge width in cells
-uniform float uSpongeStrength;  // extra damping per step at the very edge
+uniform float uNu2;             // (c_num * dt / dx)^2
+uniform vec2 uFric;             // friction g * dt = f: x = (1 - f) / (1 + f), y = 1 / (1 + f)
+uniform float uFricDt;          // f (PML cells add their damping to it)
+uniform float uPmlCells;        // PML width in cells
+uniform float uPmlInv;          // 1 / uPmlCells
+uniform float uPmlMax;          // peak PML damping * dt
 uniform vec4 uSrc[${MAX_SOURCES}];          // xy = position in cells, z = 1 / (2 sigma_cells^2), w = displacement this step
 uniform int uSrcCount;
 
 out vec4 outState;
 
-float hAt(ivec2 p) {
-  return texelFetch(uState, clamp(p, ivec2(0), ivec2(uRes) - 1), 0).r;
+vec4 st(ivec2 p) {
+  return texelFetch(uState, clamp(p, ivec2(0), ivec2(uRes) - 1), 0);
+}
+
+// PML damping * dt at cell-centre coordinate c of an axis with n cells.
+float zeta(float c, float n) {
+  float s = clamp(1.0 - min(c, n - c) * uPmlInv, 0.0, 1.0);
+  return uPmlMax * s * s * s;
 }
 
 void main() {
   ivec2 p = ivec2(gl_FragCoord.xy);
-  vec2 s = texelFetch(uState, p, 0).rg;
-  float h = s.r;
+  vec4 c0 = st(p);
+  vec4 xp = st(p + ivec2(1, 0));
+  vec4 xm = st(p - ivec2(1, 0));
+  vec4 zp = st(p + ivec2(0, 1));
+  vec4 zm = st(p - ivec2(0, 1));
+  float xp2 = st(p + ivec2(2, 0)).r;
+  float xm2 = st(p - ivec2(2, 0)).r;
+  float zp2 = st(p + ivec2(0, 2)).r;
+  float zm2 = st(p - ivec2(0, 2)).r;
+  float h = c0.r;
 
-  // 9-point isotropic Laplacian (in cell units).
-  float edge4 = hAt(p + ivec2(1, 0)) + hAt(p + ivec2(-1, 0)) + hAt(p + ivec2(0, 1)) + hAt(p + ivec2(0, -1));
-  float diag = hAt(p + ivec2(1, 1)) + hAt(p + ivec2(-1, 1)) + hAt(p + ivec2(1, -1)) + hAt(p + ivec2(-1, -1));
-  float lap = (4.0 * edge4 + diag - 20.0 * h) / 6.0;
+  // 4th-order Laplacian (cell units): (-1, 16, -30, 16, -1) / 12 along each axis.
+  float lap = (16.0 * (xp.r + xm.r + zp.r + zm.r) - (xp2 + xm2 + zp2 + zm2) - 60.0 * h) / 12.0;
+  float rhs = uNu2 * lap;
+  // Leapfrog on the step difference: d^(n+1) (1 + damp) = d^n (1 - damp) + rhs.
+  float d = c0.g * uFric.x + rhs * uFric.y;
+  vec2 psi = vec2(0.0);
 
-  // Sponge layer: quadratic ramp of damping towards the border.
   vec2 pc = vec2(p) + 0.5;
-  float edge = min(min(pc.x, pc.y), min(uRes.x - pc.x, uRes.y - pc.y));
-  float sp = clamp(1.0 - edge / uSponge, 0.0, 1.0);
-  sp *= sp;
-
-  float vel = (h - s.g) * (1.0 - uDamp - uSpongeStrength * sp);
-  float hn = (h + vel + uC2 * lap) * (1.0 - 0.1 * uSpongeStrength * sp);
+  float edge = min(min(pc.x, uRes.x - pc.x), min(pc.y, uRes.y - pc.y));
+  if (edge < uPmlCells + 1.0) {
+    // PML (psi = 0 farther in): psi at n + 1/2 here and at the 4 neighbours (from the fetched heights),
+    // div psi at n as the mean of n - 1/2 and n + 1/2.
+    float zx = zeta(pc.x, uRes.x);
+    float zz = zeta(pc.y, uRes.y);
+    float zxp = zeta(pc.x + 1.0, uRes.x);
+    float zxm = zeta(pc.x - 1.0, uRes.x);
+    float zzp = zeta(pc.y + 1.0, uRes.y);
+    float zzm = zeta(pc.y - 1.0, uRes.y);
+    float k = 0.5 * uNu2;
+    psi.x = ((1.0 - 0.5 * zx) * c0.b + k * (zz - zx) * (xp.r - xm.r)) / (1.0 + 0.5 * zx);
+    psi.y = ((1.0 - 0.5 * zz) * c0.a + k * (zx - zz) * (zp.r - zm.r)) / (1.0 + 0.5 * zz);
+    float pxp = ((1.0 - 0.5 * zxp) * xp.b + k * (zz - zxp) * (xp2 - h)) / (1.0 + 0.5 * zxp);
+    float pxm = ((1.0 - 0.5 * zxm) * xm.b + k * (zz - zxm) * (h - xm2)) / (1.0 + 0.5 * zxm);
+    float pzp = ((1.0 - 0.5 * zzp) * zp.a + k * (zx - zzp) * (zp2 - h)) / (1.0 + 0.5 * zzp);
+    float pzm = ((1.0 - 0.5 * zzm) * zm.a + k * (zx - zzm) * (h - zm2)) / (1.0 + 0.5 * zzm);
+    float divPsi = 0.25 * ((xp.b + pxp) - (xm.b + pxm) + (zp.a + pzp) - (zm.a + pzm));
+    float damp = uFricDt + 0.5 * (zx + zz);
+    d = (c0.g * (1.0 - damp) + rhs + divPsi - zx * zz * h) / (1.0 + damp);
+  }
 
   for (int i = 0; i < ${MAX_SOURCES}; i++) {
     if (i >= uSrcCount) break;
     vec4 q = uSrc[i];
-    vec2 d = pc - q.xy;
-    hn += q.w * exp(-dot(d, d) * q.z);
+    vec2 r = pc - q.xy;
+    d += q.w * exp(-dot(r, r) * q.z);
   }
 
-  outState = vec4(hn, h, 0.0, 1.0);
+  outState = vec4(h + d, d, psi);
 }
 `;
 
 // Resample a state texture into a grid of another size, cell or position, by world position
-// (quality or window changes keep the waves). Same cell size + snapped origin = exact texel copy.
+// (quality or window changes keep the waves; the PML fields restart at zero).
+// Same cell size + snapped origin = exact texel copy.
 export const COPY_FRAG = /* glsl */`
 precision highp float;
 precision highp int;
@@ -78,7 +114,7 @@ out vec4 outState;
 void main() {
   vec2 uv = (uNewMin + gl_FragCoord.xy * uCell - uOld.xy) / uOld.zw;
   float inside = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
-  outState = vec4(texture(uSrc, uv).rg * inside, 0.0, 1.0);
+  outState = vec4(texture(uSrc, uv).rg * inside, 0.0, 0.0);
 }
 `;
 

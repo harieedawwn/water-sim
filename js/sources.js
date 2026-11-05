@@ -84,11 +84,6 @@ export class SourceManager {
       this._ramp = 0;
       this.gain = 0;
     }
-
-    // Dispersion is cancelled exactly at one frequency: the mean of the active sources.
-    let sum = 0;
-    for (let i = 0; i < this.count; i++) sum += this.freqs[i];
-    this.sim.setDriveFrequency(sum / this.count);
   }
 
   // Positions back to the layout (fitted to the screen); restarts every pattern clock.

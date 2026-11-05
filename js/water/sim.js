@@ -1,14 +1,13 @@
-// GPU height-field water: damped 2D wave equation on ping-pong float render targets.
+// GPU height-field water: damped 2D wave equation on ping-pong float render targets, with a perfectly
+// matched layer (PML) on every border. Scheme and coefficients: scheme.js.
 import * as THREE from 'three';
 import { SIM_VERT, SIM_FRAG, COPY_FRAG, MAX_SOURCES } from './shaders.js';
-import { WAVE_SPEED } from '../config.js';
+import {
+  SIM_DT, FRICTION, PML_WIDTH, MAX_COURANT, numericSpeed, pmlMax, sigmaFor, sourceGain,
+} from './scheme.js';
 
-export const SIM_DT = 1 / 120;      // fixed timestep (s)
+export { SIM_DT };
 const MAX_SUBSTEPS = 3;
-const MAX_COURANT = 0.4;
-const DAMPING = 0.0003;             // per step on velocity: amplitude decays ~1.8 %/s
-const SPONGE_WIDTH = 1.2;           // world units on each border (kept off screen by framing.js)
-const SPONGE_STRENGTH = 0.12;
 const TWO_PI = Math.PI * 2;
 
 function pickTargetType(renderer) {
@@ -37,8 +36,8 @@ export class WaterSim {
     this.texel = new THREE.Vector2(1, 1);       // 1 / nx, 1 / nz (shared with shaders)
     this.time = 0;
     this.accumulator = 0;
-    this.driveFreq = 2;
     this.courant = 0;
+    this._coefCell = 0;
 
     const fmt = pickTargetType(renderer);
     if (!fmt) {
@@ -58,10 +57,12 @@ export class WaterSim {
       uniforms: {
         uState: { value: null },
         uRes: { value: new THREE.Vector2(1, 1) },
-        uC2: { value: 0 },
-        uDamp: { value: DAMPING },
-        uSponge: { value: 1 },
-        uSpongeStrength: { value: SPONGE_STRENGTH },
+        uNu2: { value: 0 },
+        uFric: { value: new THREE.Vector2((1 - FRICTION * SIM_DT) / (1 + FRICTION * SIM_DT), 1 / (1 + FRICTION * SIM_DT)) },
+        uFricDt: { value: FRICTION * SIM_DT },
+        uPmlCells: { value: 1 },
+        uPmlInv: { value: 1 },
+        uPmlMax: { value: pmlMax() * SIM_DT },
         uSrc: { value: this._src },
         uSrcCount: { value: 0 },
       },
@@ -84,7 +85,8 @@ export class WaterSim {
 
   get heightTexture() { return this._targets[this._read].texture; }
 
-  // Time including the not-yet-simulated remainder, for smooth visuals at any refresh rate.
+  // Time including the not-yet-simulated remainder (only for purely decorative animation). Everything tied to
+  // the waves (emitters, balls, 2D crests, lines) uses `time`, the time of the state on screen.
   get renderTime() { return this.time + this.accumulator; }
 
   get cellSize() { return this.cell; }
@@ -187,7 +189,8 @@ export class WaterSim {
     this.texel.set(1 / nx, 1 / nz);
     const u = this._material.uniforms;
     u.uRes.value.set(nx, nz);
-    u.uSponge.value = SPONGE_WIDTH / cell;
+    u.uPmlCells.value = PML_WIDTH / cell;
+    u.uPmlInv.value = cell / PML_WIDTH;
     this._updateCoefficients();
     this.reset();
     if (old) {
@@ -229,41 +232,27 @@ export class WaterSim {
     r.setRenderTarget(prev);
   }
 
-  // Frequency of the sine sources; used to cancel numerical dispersion at that frequency.
-  setDriveFrequency(f) {
-    if (f === this.driveFreq) return;
-    this.driveFreq = f;
-    this._updateCoefficients();
-  }
-
   _updateCoefficients() {
-    // Discrete dispersion (leapfrog + Laplacian along an axis):
-    //   sin(w dt / 2) / dt = c_num * sin(k dx / 2) / dx.
-    // Choosing c_num this way makes the simulated wavelength equal WAVE_SPEED / f exactly.
-    const dx = this.cellSize;
-    const w = TWO_PI * this.driveFreq;
-    const k = w / WAVE_SPEED;
-    const cNum = (dx / SIM_DT) * Math.sin(w * SIM_DT / 2) / Math.sin(k * dx / 2);
-    this.courant = cNum * SIM_DT / dx;
+    // One solver speed per cell size, independent of the source frequencies (scheme.js numericSpeed):
+    // every wave, old or new, of any frequency in the range travels at WAVE_SPEED within 0.2 %.
+    if (this._coefCell === this.cellSize) return;   // depends on the cell size only (not on resizes)
+    this._coefCell = this.cellSize;
+    const cNum = numericSpeed(this.cellSize);
+    this.courant = cNum * SIM_DT / this.cellSize;
     if (this.courant > MAX_COURANT) {
       console.warn(`CFL violated: c*dt/dx = ${this.courant.toFixed(3)} > ${MAX_COURANT}`);
     }
-    this._material.uniforms.uC2.value = this.courant * this.courant;
+    this._material.uniforms.uNu2.value = this.courant * this.courant;
   }
 
   // Gaussian width (world units) actually used for an emitter radius.
   sigmaFor(radius) {
-    return Math.max(radius * 0.6, 2 * this.cellSize);
+    return sigmaFor(radius, this.cellSize);
   }
 
   // Per-step sine displacement that yields a far-field wave amplitude of 1 at r = 1 unit.
-  // 2D Green's function: |h| = F / (4 c^2) * sqrt(2 / (pi k r)), with the step displacement q
-  // acting as a source density q / dt^2 whose Gaussian footprint has spectrum 2 pi s^2 exp(-k^2 s^2 / 2).
   sourceGain(radius, freq) {
-    const s = this.sigmaFor(radius);
-    const k = TWO_PI * freq / WAVE_SPEED;
-    const footprint = TWO_PI * s * s * Math.exp(-0.5 * k * k * s * s);
-    return (4 * WAVE_SPEED * WAVE_SPEED * SIM_DT * SIM_DT) / (footprint * Math.sqrt(2 / (Math.PI * k)));
+    return sourceGain(radius, freq, this.cellSize);
   }
 
   reset() {
