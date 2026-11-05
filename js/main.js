@@ -108,9 +108,9 @@ function start() {
   function applyView() {
     const want2d = settings.view === '2d';
     if (want2d && !in2d) {
-      leftAt = sim.renderTime;
+      leftAt = sources.time;
     } else if (!want2d && in2d) {
-      sources.rebase(sim.renderTime - leftAt, leftAt);
+      sources.rebase(sources.time - leftAt, leftAt);
       quality.meter.reset();
     }
     in2d = want2d;

@@ -1,6 +1,7 @@
 // SourceManager: source positions (layouts, dragging), per-source frequency, coherent sine emitters
-// with ramp-up, phase offset, mouse drops, and the per-source emission start / stop times that the
-// analytic 2D view and the interference lines use. Sources are S1..S4 = index 0..3.
+// with ramp-up, initial phases, mouse drops, the per-source emission start / stop times that the
+// interference lines and the analytic 2D view use.
+// Sources are S1..S4 = index 0..3. One clock for everything: sim.time, the time of the water on screen.
 import { WAVE_SPEED, BALL_RADIUS, MAX_SOURCES, LIMITS } from './config.js';
 
 const TWO_PI = Math.PI * 2;
@@ -51,8 +52,9 @@ export class SourceManager {
     this._dropCount = 0;
   }
 
-  // Time base shared by every view (the sim clock keeps running in the 2D view).
-  get time() { return this.sim.renderTime; }
+  // Time base shared by every view: the time of the water state on screen (the sim clock keeps running in
+  // the 2D view). Emitters, balls, 2D crests and lines all use it.
+  get time() { return this.sim.time; }
 
   // Take new settings. Layout changes reset positions and restart the ramp; frequency changes keep
   // each source's phase continuous and restart its pattern clock.
@@ -62,7 +64,7 @@ export class SourceManager {
       const f = s.perSourceFreq ? s.sourceFreqs[i] : s.frequency;
       if (f === this.freqs[i]) continue;
       if (this.freqs[i] > 0) {
-        this._phaseBase[i] = (this._phaseBase[i] + TWO_PI * (this.freqs[i] - f) * this.sim.time) % TWO_PI;
+        this._phaseBase[i] = (this._phaseBase[i] + TWO_PI * (this.freqs[i] - f) * t) % TWO_PI;
         this.start[i] = t;
       }
       this.freqs[i] = f;
@@ -270,6 +272,23 @@ export class SourceManager {
       // The pattern of this source is not stable until its phase settles.
       this.start[i] = this.time;
     }
+    // Sources of equal frequency keep exactly the phase difference set in the panel. Frequency changes keep
+    // each phase continuous by shifting its phase base, so once frequencies are equal again the bases glide
+    // (same rate, no jump) to the base of the first source with that frequency.
+    for (let i = 1; i < MAX_SOURCES; i++) {
+      let ref = -1;
+      for (let j = 0; j < i && ref < 0; j++) if (this.freqs[j] === this.freqs[i]) ref = j;
+      if (ref < 0) continue;
+      let db = this._phaseBase[ref] - this._phaseBase[i];
+      db -= TWO_PI * Math.round(db / TWO_PI);
+      if (db === 0) continue;
+      if (i >= this.count || Math.abs(db) <= maxStep) {
+        this._phaseBase[i] = this._phaseBase[ref];   // idle sources snap
+      } else {
+        this._phaseBase[i] += Math.sign(db) * maxStep;
+      }
+      if (i < this.count) this.start[i] = this.time;
+    }
     this._amp += (this.amplitude - this._amp) * Math.min(1, dt * AMP_RATE);
 
     const em = this.emitters;
@@ -293,4 +312,5 @@ export class SourceManager {
   afterStep(substeps) {
     if (substeps > 0) this._dropCount = 0;
   }
+
 }

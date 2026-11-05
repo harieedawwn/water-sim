@@ -47,7 +47,7 @@ export class Balls {
   // hover: index of the highlighted source, or -1.
   update(sim, sources, hover) {
     this.uniforms.uHeight.value = sim.heightTexture;
-    const t = sim.renderTime;
+    const t = sources.time;   // the time of the water state on screen
     const bob = sources.bobAmplitude;
     const p = sources.positions;
     for (let i = 0; i < MAX_BALLS; i++) {
