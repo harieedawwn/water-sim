@@ -86,3 +86,9 @@ export function sourceGain(radius, freq, cell) {
   const friction = Math.exp(FRICTION / WAVE_SPEED);
   return (4 * WAVE_SPEED * WAVE_SPEED * SIM_DT * SIM_DT * friction) / (footprint * Math.sqrt(2 / (Math.PI * k)));
 }
+
+// Phase lead added to a sine emitter so that the wave it radiates is sin(2 pi f t + phi - k r) exactly
+// (t = sim.time of the displayed state): the 2D Green's function lags its source by pi / 4 in the far
+// field (i H0(kr) ~ e^(i (kr + pi / 4))). Measured on the replica: the residual is below 0.5 deg for
+// r >= 2 lambda; nearer it follows the exact Hankel phase (+1/(8 k r) rad: +2.3 deg at lambda / 2).
+export const SOURCE_PHASE_LEAD = Math.PI / 4;

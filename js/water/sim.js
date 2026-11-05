@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { SIM_VERT, SIM_FRAG, COPY_FRAG, MAX_SOURCES } from './shaders.js';
 import {
-  SIM_DT, FRICTION, PML_WIDTH, MAX_COURANT, numericSpeed, pmlMax, sigmaFor, sourceGain,
+  SIM_DT, FRICTION, PML_WIDTH, MAX_COURANT, SOURCE_PHASE_LEAD, numericSpeed, pmlMax, sigmaFor, sourceGain,
 } from './scheme.js';
 
 export { SIM_DT };
@@ -300,7 +300,8 @@ export class WaterSim {
     for (let i = 0; i < emitters.length && count < MAX_SOURCES; i++) {
       const e = emitters[i];
       let value;
-      if (e.mode === 'sine') value = e.amp * Math.sin(TWO_PI * e.freq * this.time + e.phase);
+      // The radiated wave is sin(2 pi f t + phase - k r) at the time of the resulting state (scheme.js).
+      if (e.mode === 'sine') value = e.amp * Math.sin(TWO_PI * e.freq * this.time + e.phase + SOURCE_PHASE_LEAD);
       else if (first) value = e.amp;
       else continue;
       if (value === 0) continue;
